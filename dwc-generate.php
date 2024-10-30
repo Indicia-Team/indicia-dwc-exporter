@@ -210,10 +210,10 @@ class BuildDwcHelper {
     if (empty($this->conf['datasetName'])) {
       throw new Exception("Missing datasetName setting in configuration");
     }
-    if (!empty($this->conf['surveyId']) && preg_match('/^\d+$/', $this->conf['surveyId'])) {
+    if (!empty($this->conf['surveyId']) && !preg_match('/^\d+$/', $this->conf['surveyId'])) {
       throw new Exception('The surveyId setting should be an integer.');
     }
-    if (!empty($this->conf['higherGeographyId']) && !preg_match('/^[0-9]+$/', $this->conf['higherGeographyId'])) {
+    if (!empty($this->conf['higherGeographyId']) && !preg_match('/^\d+$/', $this->conf['higherGeographyId'])) {
       throw new Exception('The higherGeographyId setting should be an integer containing a location ID.');
     }
   }

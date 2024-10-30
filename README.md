@@ -1,6 +1,4 @@
 # Indicia Darwin Core Exporter
-Adds ability to set up multiple similar exports in a single config file for IPT data repository
-# 
 
 A small PHP script for extracting data in an Indicia Warehouse Elasticsearch instance into a
 Darwin Core archive. Can produce Comma Separated Values (*.csv) files as well.
