@@ -25,7 +25,8 @@
   },
   "outputType": "dwca",
   "options": [
-	  "useGridRefsIfPossible"
+	  "useGridRefsIfPossible",
+    "ipt"
   ],
   "occurrenceIdPrefix": "",
   "defaultLicenceCode": "",

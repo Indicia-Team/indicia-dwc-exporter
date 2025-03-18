@@ -55,6 +55,8 @@ script. This file contains the following options:
 * options - array of options to extend data with.
   * useGridRefsIfPossible - for NBN Atlas export compatibility, switch to using the gridReference
     field instead of decimalLatitude and decimalLongitude where appropriate.
+  * ipt - set this flag to true to enable IPT compatibility, which means that new lines inside
+    comment fields will be replaced by <br>.
 * outputFile - optional output file name, relative or absolute file path. Use when the output type
   is dwca (Darwin Core Archive), or when the output type is csv and only a single output file is
   specified in the meta.xml file. Existing CSV files will be overwritten and existing Darwin Core

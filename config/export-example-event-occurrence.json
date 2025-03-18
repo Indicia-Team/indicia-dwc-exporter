@@ -22,7 +22,8 @@
   },
   "outputType": "dwca",
   "options": [
-	  "useGridRefsIfPossible"
+	  "useGridRefsIfPossible",
+    "ipt"
   ],
   "outputFile": "exports/export-example-event-occurrence.zip",
   "occurrenceIdPrefix": "",

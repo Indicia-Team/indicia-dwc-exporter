@@ -25,7 +25,8 @@
   },
   "outputType": "dwca",
   "options": [
-	  "useGridRefsIfPossible"
+	  "useGridRefsIfPossible",
+    "ipt"
   ],
   "outputFile": "exports/export-example-occurrence.zip",
   "occurrenceIdPrefix": "",

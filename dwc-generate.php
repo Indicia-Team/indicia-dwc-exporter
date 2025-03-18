@@ -1470,8 +1470,8 @@ class BuildDwcHelper {
       'identificationVerificationStatus' => $this->getIdentificationVerificationStatus($source),
       'identifiedBy' => empty($source['identification']['identified_by']) ? '' : $source['identification']['identified_by'],
       'occurrenceStatus' => $source['occurrence']['zero_abundance'] === 'true' ? 'absent' : 'present',
-      'eventRemarks' => empty($source['event']['event_remarks']) ? '' : $source['event']['event_remarks'],
-      'occurrenceRemarks' => empty($source['occurrence']['occurrence_remarks']) ? '' : $source['occurrence']['occurrence_remarks'],
+      'eventRemarks' => $this->formatRemarks($source['event']['event_remarks'] ?? ''),
+      'occurrenceRemarks' => $this->formatRemarks($source['occurrence']['occurrence_remarks'] ?? ''),
     ];
     foreach ($fileMetadata['columns'] as $dwcTerm) {
       $row[] = $mappings[$dwcTerm] ?? '';
@@ -1507,13 +1507,31 @@ class BuildDwcHelper {
       'decimalLongitude' => $useGridRefsIfPossible && $sensitiveOrNotPoint ? '' : $points[1],
       'geodeticDatum' => 'WGS84',
       'habitat' => empty($source['event']['habitat']) ? '' : $source['event']['habitat'],
-      'eventRemarks' => empty($source['event']['event_remarks']) ? '' : $source['event']['event_remarks'],
-      'samplingProtocol' => empty($source['event']['sampling_protocol']) ? '' : $source['event']['sampling_protocol'],
+      'eventRemarks' => $this->formatRemarks($source['event']['event_remarks'] ?? ''),
+      'samplingProtocol' => $source['event']['sampling_protocol'] ?? '',
     ];
     foreach ($fileMetadata['columns'] as $dwcTerm) {
       $row[] = $mappings[$dwcTerm] ?? '';
     }
     return $row;
+  }
+
+  /**
+   * If IPT option enabled, then new lines in remarks need to be converted to <br>.
+   *
+   * @param string $remarks
+   *   Remarks to format.
+   *
+   * @return string
+   *   Formatted remarks.
+   */
+  private function formatRemarks($remarks) {
+    if (in_array('ipt', $this->conf['options'])) {
+      return str_replace(["\r\n", "\r", "\n"], '<br>', trim($remarks));
+    }
+    else {
+      return trim($remarks);
+    }
   }
 
   /**
