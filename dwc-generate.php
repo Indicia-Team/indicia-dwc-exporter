@@ -115,12 +115,13 @@ class BuildDwcHelper {
     if (empty(trim($configFileContents))) {
       throw new Exception("Empty configuration file");
     }
+    $configDecoded = json_decode($configFileContents, TRUE);
+    if (!$configDecoded) {
+      throw new Exception(message: "Invalid configuration file content, possibly a JSON syntax error");
+    }
     $this->confAsLoaded = array_merge([
       'options' => [],
-    ], json_decode($configFileContents, TRUE));
-    if (empty($this->confAsLoaded)) {
-      throw new Exception("Invalid configuration file - JSON parse failure");
-    }
+    ], $configDecoded);
     // If repeatExport not configured, set up a default so a single file is
     // export using the base config.
     if (empty($this->confAsLoaded['repeatExport'])) {
@@ -1483,9 +1484,12 @@ class BuildDwcHelper {
     $customFields = $this->conf['customFields']['occurrence'] ?? [];
     foreach ($fileMetadata['columns'] as $dwcTerm) {
       if (isset($customFields[$dwcTerm])) {
-        $fn = $customFields[$dwcTerm][0];
+        $fn = 'customGet' . $customFields[$dwcTerm][0];
         $params = $customFields[$dwcTerm][1];
-        $row[] = $fn($source, $params);
+        if (!method_exists($this, $fn)) {
+          throw new Exception("Invalid customField function name $fn");
+        }
+        $row[] = $this->$fn($source, $params);
       }
       else {
         $row[] = $mappings[$dwcTerm] ?? '';
