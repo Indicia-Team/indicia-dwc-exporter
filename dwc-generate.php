@@ -1562,7 +1562,7 @@ class BuildDwcHelper {
     if (!in_array($params[0], ['occurrence', 'event'])) {
       throw new Exception('Incorrect customField structure in configuration file.');
     }
-    foreach ($source[$params[0]]['attributes'] as $attr) {
+    foreach ($source[$params[0]]['attributes'] ?? [] as $attr) {
       if (!preg_match('/^\d+$/', $params[1])) {
         throw new Exception('Incorrect customField structure in configuration file.');
       }
@@ -1586,8 +1586,8 @@ class BuildDwcHelper {
    *   the returned object and the values are the IDs of the associated
    *   attribute values.
    *
-   * @return array
-   *   Associative array of found values.
+   * @return string
+   *   Associative array of found values, encoded as a JSON string.
    */
   private function customGetAttributesObject(array $source, array $params) {
     $obj = [];
