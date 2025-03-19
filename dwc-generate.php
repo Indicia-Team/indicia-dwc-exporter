@@ -1477,6 +1477,7 @@ class BuildDwcHelper {
       'eventRemarks' => $this->formatRemarks($source['event']['event_remarks'] ?? ''),
       'occurrenceRemarks' => $this->formatRemarks($source['occurrence']['occurrence_remarks'] ?? ''),
       'samplingProtocol' => $source['event']['sampling_protocol'] ?? '',
+      'associatedMedia' => $this->getAssociatedMedia('occurrence', $source),
     ];
     // Fetch field customisations.
     $customFields = $this->conf['customFields']['occurrence'] ?? [];
@@ -1523,6 +1524,7 @@ class BuildDwcHelper {
       'habitat' => empty($source['event']['habitat']) ? '' : $source['event']['habitat'],
       'eventRemarks' => $this->formatRemarks($source['event']['event_remarks'] ?? ''),
       'samplingProtocol' => $source['event']['sampling_protocol'] ?? '',
+      'associatedMedia' => $this->getAssociatedMedia('event', $source),
     ];
     // Fetch field customisations.
     $customFields = $this->conf['customFields']['event'] ?? [];
@@ -1695,6 +1697,25 @@ class BuildDwcHelper {
       default:
         return '';
     }
+  }
+
+  /**
+   * Get list of media files.
+   *
+   * @param string $type
+   *   Specify "event" or "occurrence".
+   * @param array $source
+   *   ES Document source.
+   *
+   * @return string
+   *   String containing | separated list of URLs to media.
+   */
+  private function getAssociatedMedia($type, array $source) {
+    $list = [];
+    foreach ($source[$type]['media'] ?? [] as $media) {
+      $list[] = $this->warehouseUrl . '/upload/' . $media['path'];
+    }
+    return implode('|', $list);
   }
 
 }
