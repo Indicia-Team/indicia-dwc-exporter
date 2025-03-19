@@ -114,9 +114,6 @@ script. This file contains the following options:
     }
   ```
 
-
-
-
 # Metafile
 
 Additionally you must provide a file called meta.xml which conforms to the Darwin Core metafile
@@ -133,6 +130,7 @@ include in the Darwin Core Archive or to output as CSV files are limited to the 
   metadata/export-example-event-occurrence/meta.xml).
 
 For event datasets, the following field terms are supported:
+* http://rs.tdwg.org/dwc/terms/associatedMedia
 * http://rs.tdwg.org/dwc/terms/coordinateUncertaintyInMeters
 * http://rs.tdwg.org/dwc/terms/decimalLatitude
 * http://rs.tdwg.org/dwc/terms/decimalLongitude
@@ -149,7 +147,7 @@ For event datasets, the following field terms are supported:
 * http://rs.tdwg.org/dwc/terms/year
 
 For occurrence datasets, the following field terms are supported:
-
+* http://rs.tdwg.org/dwc/terms/associatedMedia
 * http://rs.tdwg.org/dwc/terms/basisOfRecord
 * http://rs.tdwg.org/dwc/terms/coordinateUncertaintyInMeters
 * http://rs.tdwg.org/dwc/terms/collectionCode
