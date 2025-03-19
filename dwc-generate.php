@@ -1440,6 +1440,7 @@ class BuildDwcHelper {
       'id' => $this->conf['occurrenceIdPrefix'] . $source['id'],
       'otherCatalogNumbers' => empty($source['occurrence']['source_system_key']) ? '' : $source['occurrence']['source_system_key'],
       'eventID' => $this->conf['eventIdPrefix'] . $source['event']['event_id'],
+      'parentEventID' => isset($source['event']['parent_event_id']) ? $this->conf['eventIdPrefix'] . $source['event']['parent_event_id'] : NULL,
       // If an extension, we only support occurrences being an extension of
       // events, so the coreid will always point to an event.
       'coreid' => $this->conf['eventIdPrefix'] . $source['event']['event_id'],
@@ -1452,6 +1453,8 @@ class BuildDwcHelper {
       'individualCount' => empty($source['occurrence']['organism_quantity']) ? '' : $source['occurrence']['organism_quantity'],
       'vernacularName' => empty($source['taxon']['vernacular_name']) ? '' : $source['taxon']['vernacular_name'],
       'eventDate' => $this->getDate($source),
+      'year' => $source['event']['year'],
+      'month' => $source['event']['month'],
       'recordedBy' => empty($source['event']['recorded_by']) ? '' : $source['event']['recorded_by'],
       // Tolerate DwC/US English or UK English.
       'licence' => empty($source['metadata']['licence_code']) ? $this->conf['defaultLicenceCode'] : $source['metadata']['licence_code'],
@@ -1470,11 +1473,22 @@ class BuildDwcHelper {
       'identificationVerificationStatus' => $this->getIdentificationVerificationStatus($source),
       'identifiedBy' => empty($source['identification']['identified_by']) ? '' : $source['identification']['identified_by'],
       'occurrenceStatus' => $source['occurrence']['zero_abundance'] === 'true' ? 'absent' : 'present',
+      'habitat' => empty($source['event']['habitat']) ? '' : $source['event']['habitat'],
       'eventRemarks' => $this->formatRemarks($source['event']['event_remarks'] ?? ''),
       'occurrenceRemarks' => $this->formatRemarks($source['occurrence']['occurrence_remarks'] ?? ''),
+      'samplingProtocol' => $source['event']['sampling_protocol'] ?? '',
     ];
+    // Fetch field customisations.
+    $customFields = $this->conf['customFields']['occurrence'] ?? [];
     foreach ($fileMetadata['columns'] as $dwcTerm) {
-      $row[] = $mappings[$dwcTerm] ?? '';
+      if (isset($customFields[$dwcTerm])) {
+        $fn = $customFields[$dwcTerm][0];
+        $params = $customFields[$dwcTerm][1];
+        $row[] = $fn($source, $params);
+      }
+      else {
+        $row[] = $mappings[$dwcTerm] ?? '';
+      }
     }
     return $row;
   }
@@ -1510,10 +1524,74 @@ class BuildDwcHelper {
       'eventRemarks' => $this->formatRemarks($source['event']['event_remarks'] ?? ''),
       'samplingProtocol' => $source['event']['sampling_protocol'] ?? '',
     ];
+    // Fetch field customisations.
+    $customFields = $this->conf['customFields']['event'] ?? [];
     foreach ($fileMetadata['columns'] as $dwcTerm) {
-      $row[] = $mappings[$dwcTerm] ?? '';
+      if (isset($customFields[$dwcTerm])) {
+        $fn = $customFields[$dwcTerm][0];
+        $params = $customFields[$dwcTerm][1];
+        $row[] = $fn($source, $params);
+      }
+      else {
+        $row[] = $mappings[$dwcTerm] ?? '';
+      }
     }
     return $row;
+  }
+
+  /**
+   * Custom field function that obtains a custom attribute value.
+   *
+   * @param array $source
+   *   Occurrence or event document.
+   * @param array $params
+   *   Function parameters. The first parameter should be 'occurrence' or
+   *   'event' depending on the type of attribute. The second should be the ID
+   *   of the attribute value to fetch.
+   *
+   * @return string|null
+   *   Attribute value, or NULL if not specified for this record.
+   */
+  private function customGetAttributeValue(array $source, array $params) {
+    if (!in_array($params[0], ['occurrence', 'event'])) {
+      throw new Exception('Incorrect customField structure in configuration file.');
+    }
+    foreach ($source[$params[0]]['attributes'] as $attr) {
+      if (!preg_match('/^\d+$/', $params[1])) {
+        throw new Exception('Incorrect customField structure in configuration file.');
+      }
+      if ($attr['id'] == $params[1]) {
+        return $attr['value'];
+      }
+    }
+    // Default.
+    return NULL;
+  }
+
+  /**
+   * Retrieve an object containing the values of one or more custom attributes.
+   *
+   * @param array $source
+   *   Occurrence or event document.
+   * @param array $params
+   *   Function parameters. The first parameter should be 'occurrence' or
+   *   'event' depending on the type of attribute. The second should be an
+   *   associative array where the keys are the property names to include in
+   *   the returned object and the values are the IDs of the associated
+   *   attribute values.
+   *
+   * @return array
+   *   Associative array of found values.
+   */
+  private function customGetAttributesObject(array $source, array $params) {
+    $obj = [];
+    foreach ($params[1] as $caption => $attrId) {
+      $value = $this->customGetAttributeValue($source, [$params[0], $attrId]);
+      if ($value !== NULL) {
+        $obj[$caption] = $value;
+      }
+    }
+    return $obj;
   }
 
   /**

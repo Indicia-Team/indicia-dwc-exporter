@@ -92,6 +92,30 @@ script. This file contains the following options:
   per file. You can also use the `surveyId` and `higherGeographyId` filter shortcut options to
   easily divide the files on either survey or location. An example of the `repeatExport`
   configuration is provided in the file `config/export-example-occurrence-bulk.json`.
+* customFields - an optional configuration object where the top-level property names are either
+  "occurrence" or "event" allowing custom fields to be attached to either event or occurrenc data.
+  Each of these properties contains an array of DwC term names with configuration for a function
+  which will replace the output value for that term with a custom value (for example a custom
+  attribute value). The configuration is an array where the first value is a supported custom
+  function name and the second array entry is the parameter to pass to the function. Currently 2
+  custom functions are supported:
+  * AttributeValue - fetch a single attribute value for either the event or occurrence attributes
+    associated with the record. The parameter required is the attribute ID to fetch the value for.
+  * AttributesObject - fetch an object with named properties, each containing a custom attribute
+    value. The parameter is an object where the property names will be copied into the returned
+    object and the values are attribute IDs to fetch the values for.
+  An example of the correct structure is:
+  ```json
+    "customFields": {
+      "occurrence": {
+        "samplingProtocol": ["AttributeValue", ["occurrence", 123]],
+        "dynamicProperties": ["AttributesObject", ["occurrence", {"Wingspan": 456, "Prey taken": 789}]]
+      }
+    }
+  ```
+
+
+
 
 # Metafile
 
@@ -133,26 +157,32 @@ For occurrence datasets, the following field terms are supported:
 * http://rs.tdwg.org/dwc/terms/datasetName
 * http://rs.tdwg.org/dwc/terms/decimalLatitude
 * http://rs.tdwg.org/dwc/terms/decimalLongitude
+* http://rs.tdwg.org/dwc/terms/dynamicProperties - must be configured using the "customFields" option in the config file.
 * http://rs.tdwg.org/dwc/terms/eventDate
 * http://rs.tdwg.org/dwc/terms/eventID
 * http://rs.tdwg.org/dwc/terms/eventRemarks
 * http://rs.tdwg.org/dwc/terms/geodeticDatum
 * http://data.nbn.org/nbn/terms/gridReference
+* http://rs.tdwg.org/dwc/terms/habitat
 * http://rs.tdwg.org/dwc/terms/identifiedBy
 * http://rs.tdwg.org/dwc/terms/identificationVerificationStatus
 * http://rs.tdwg.org/dwc/terms/individualCount
 * http://purl.org/dc/terms/license
 * http://rs.tdwg.org/dwc/terms/lifeStage
 * http://rs.tdwg.org/dwc/terms/locality
+* http://rs.tdwg.org/dwc/terms/month
 * http://rs.tdwg.org/dwc/terms/occurrenceID
 * http://rs.tdwg.org/dwc/terms/occurrenceRemarks
 * http://rs.tdwg.org/dwc/terms/occurrenceStatus
 * http://rs.tdwg.org/dwc/terms/otherCatalogNumbers
+* http://rs.tdwg.org/dwc/terms/parentEventID
 * http://rs.tdwg.org/dwc/terms/recordedBy
 * http://purl.org/dc/terms/rightsHolder
+* http://rs.tdwg.org/dwc/terms/samplingProtocol
 * http://rs.tdwg.org/dwc/terms/scientificName
 * http://rs.tdwg.org/dwc/terms/sex
 * http://rs.tdwg.org/dwc/terms/taxonID
+* http://rs.tdwg.org/dwc/terms/year
 * http://rs.tdwg.org/dwc/terms/vernacularName
 
 When your meta.xml file contains a core event file and an extension occurrence file, you should add

@@ -35,5 +35,11 @@
   "datasetName": "{{ Dataset name }}",
   "datasetIdSampleAttrId": 123,
   "basisOfRecord": "HumanObservation",
-  "xmlFilesInDir": "metadata/export-example-occurrence"
+  "xmlFilesInDir": "metadata/export-example-occurrence",
+	"customFields": {
+		"occurrence": {
+			"samplingProtocol": ["AttributeValue", ["occurrence", 123]],
+			"dynamicProperties": ["AttributesObject", ["occurrence", {"Wingspan": 456, "Prey taken": 789}]]
+		}
+	}
 }

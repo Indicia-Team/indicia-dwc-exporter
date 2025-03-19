@@ -32,5 +32,11 @@
   "datasetName": "{{ Dataset name }}",
   "datasetIdSampleAttrId": 123,
   "basisOfRecord": "HumanObservation",
-  "xmlFilesInDir": "metadata/export-example-event"
+  "xmlFilesInDir": "metadata/export-example-event",
+	"customFields": {
+		"event": {
+			"samplingProtocol": ["AttributeValue", ["event", 123]],
+			"dynamicProperties": ["AttributesObject", ["event", {"Altitude": 456, "Temperature": 789}]]
+		}
+	}
 }
