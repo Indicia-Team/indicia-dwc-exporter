@@ -1597,7 +1597,7 @@ class BuildDwcHelper {
         $obj[$caption] = $value;
       }
     }
-    return $obj;
+    return json_encode($obj);
   }
 
   /**
