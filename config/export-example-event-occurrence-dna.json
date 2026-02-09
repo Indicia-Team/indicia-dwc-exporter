@@ -26,12 +26,12 @@
 	  "useGridRefsIfPossible",
     "ipt"
   ],
-  "outputFile": "exports/export-example-event-occurrence.zip",
+  "outputFile": "exports/export-example-event-occurrence-dna.zip",
   "occurrenceIdPrefix": "",
   "defaultLicenceCode": "",
   "rightsHolder": "{{ Rights holder }}",
   "datasetName": "{{ Dataset name }}",
   "datasetIdSampleAttrId": 123,
   "basisOfRecord": "HumanObservation",
-  "xmlFilesInDir": "metadata/export-example-event-occurrence"
+  "xmlFilesInDir": "metadata/export-example-event-occurrence-dna"
 }
