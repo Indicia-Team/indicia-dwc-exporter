@@ -84,6 +84,7 @@ script. This file contains the following options:
   meta.xml file.
 * datasetIdSampleAttrId - ID of the sample attribute which holds the datasetID value.
 * basisOfRecord - optional, defaults to "HumanObservation".
+* basisOfRecordDna - optional, defaults to "MaterialSample".
 * repeatExport - optional. Allows a single configuration file to define a set of several similar
   exports, for example you might want to create a series of exports which are identical but divide
   the data by country. Provide an array, containing an object per export file with properties that
@@ -128,6 +129,8 @@ include in the Darwin Core Archive or to output as CSV files are limited to the 
   metadata/export-example-event/meta.xml).
 * Core file contains event data with occurrence data in an extension (see
   metadata/export-example-event-occurrence/meta.xml).
+* Core file contains event data with occurrence data and DNA derived data in an extension (see
+  metadata/export-example-event-occurrence-dna/meta.xml).
 
 For event datasets, the following field terms are supported:
 * http://rs.tdwg.org/dwc/terms/associatedMedia
@@ -183,14 +186,36 @@ For occurrence datasets, the following field terms are supported:
 * http://rs.tdwg.org/dwc/terms/year
 * http://rs.tdwg.org/dwc/terms/vernacularName
 
+For DNA derived datasets, the following field terms are supported:
+* http://rs.tdwg.org/dwc/terms/occurrenceID
+* http://rs.gbif.org/terms/dna_sequence
+* http://rs.tdwg.org/dwc/terms/associatedSequences
+* https://w3id.org/mixs/0000044 (target_gene)
+* http://rs.gbif.org/terms/pcr_primer_reference
+* https://w3id.org/mixs/0000014 (env_medium)
+* https://w3id.org/mixs/0000012 (env_broad_scale)
+* https://w3id.org/mixs/0000087 (otu_db)
+* https://w3id.org/mixs/0000086 (otu_seq_comp_appr)
+* https://w3id.org/mixs/0000085 (otu_class_appr)
+* https://w3id.org/mixs/0000013 (env_local_scale)
+* https://w3id.org/mixs/0000045 (target_subfragment)
+* http://rs.gbif.org/terms/pcr_primer_name_forward
+* http://rs.gbif.org/terms/pcr_primer_forward
+* http://rs.gbif.org/terms/pcr_primer_name_reverse
+* http://rs.gbif.org/terms/pcr_primer_reverse
+
 When your meta.xml file contains a core event file and an extension occurrence file, you should add
 an element called `<id>` to the list of fields for the event, plus `<coreid>` to the list of fields
-for the occurrence. See https://dwc.tdwg.org/text/#212-elements.
+for the occurrence. See https://dwc.tdwg.org/text/#212-elements. If the meta.xml file contains a
+core event file, an occurrence file and a DNA derived data file then also add an element called
+`<coreid>` to the DNA derived data file.
 
 # Warehouse connection config file
 
 In order to configure the connection to the warehouse, create a file `config/warehouse.json` and
-paste the following into it, replacing values in `<>` with the appropriate value for your system:
+paste the following into it, replacing values in `<>` with the appropriate value for your system.
+The warehouse_url setting just needs domain plus path to the folder containing the warehouse; it
+does not need to include `/index.php` or anything after it.
 
 ```json
 {

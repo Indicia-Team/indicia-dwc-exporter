@@ -140,6 +140,7 @@ class BuildDwcHelper {
     }
     $this->conf = array_merge([
       'basisOfRecord' => 'HumanObservation',
+      'basisOfRecordDna' => 'MaterialSample',
       'defaultLicenceCode' => '',
       'eventIdPrefix' => '',
       'occurrenceIdPrefix' => '',
@@ -167,7 +168,7 @@ class BuildDwcHelper {
   /**
    * Validates parameters in the config file.
    *
-   * @throw Exception
+   * @throws Exception
    *   Throws exceptions where problems found.
    */
   private function validateConfig() {
@@ -198,12 +199,12 @@ class BuildDwcHelper {
           throw new Exception($this->conf['xmlFilesInDir'] . ' directory specified in xmlFilesInDir config setting does not exist');
         }
         if (!file_exists($this->conf['xmlFilesInDir'] . DIRECTORY_SEPARATOR . 'eml.xml')) {
-          throw new exception('EML file missing: ' . $this->conf['xmlFilesInDir'] . DIRECTORY_SEPARATOR . 'eml.xml');
+          throw new Exception('EML file missing: ' . $this->conf['xmlFilesInDir'] . DIRECTORY_SEPARATOR . 'eml.xml');
         }
       }
     }
     if (!file_exists($this->conf['xmlFilesInDir'] . DIRECTORY_SEPARATOR . 'meta.xml')) {
-      throw new exception('Metadata file missing: ' . $this->conf['xmlFilesInDir'] . DIRECTORY_SEPARATOR . 'meta.xml');
+      throw new Exception('Metadata file missing: ' . $this->conf['xmlFilesInDir'] . DIRECTORY_SEPARATOR . 'meta.xml');
     }
     if (empty($this->conf['rightsHolder'])) {
       throw new Exception("Missing rightsHolder setting in configuration");
@@ -263,9 +264,9 @@ class BuildDwcHelper {
    */
   private function getFileMetadataFromXml(DOMElement $el): array {
     $rowType = $el->getAttribute('rowType');
-    // We currently only support occurrence and event types but this could be
-    // extended in future.
-    if (!preg_match('/^http(s)?:\/\/rs.tdwg.org\/dwc\/terms\/(?P<type>(Occurrence|Event))$/', $rowType, $matches)) {
+    // We currently only support occurrence, event and DNA-derived data types
+    // but this could be extended in future.
+    if (!preg_match('/^http(s)?:\/\/rs.(tdwg|gbif).org\/(dwc\/terms|terms\/1\.0)\/(?P<type>(Occurrence|Event|DNADerivedData))$/', $rowType, $matches)) {
       throw new Exception('Unrecognised rowType given for the core element.');
     }
     $r = [
@@ -288,12 +289,38 @@ class BuildDwcHelper {
           $r['columns'][$index] = $childEl->nodeName;
         }
         elseif ($childEl->nodeName === 'field') {
-          $r['columns'][$index] = basename($childEl->getAttribute('term'));
+          $r['columns'][$index] = $this->mapDwcTermToColumnName(basename($childEl->getAttribute('term')));
         }
       }
     }
     ksort($r['columns']);
     return $r;
+  }
+
+  /**
+   * Convert a DwC term URI to the correct term/column title.
+   *
+   * For example, https://w3id.org/mixs/0000044 is the URI for target_gene
+   * term, so a parameter of 0000044 is mapped to target_gene.
+   *
+   * @param string $term
+   *   The base name extracted from a term's URI in the meta.xml field.
+   *
+   * @return string
+   *   The mapped term.
+   */
+  private function mapDwcTermToColumnName($term) {
+    $mappings = [
+      '0000044' => 'target_gene',
+      '0000014' => 'env_medium',
+      '0000012' => 'env_broad_scale',
+      '0000087' => 'otu_db',
+      '0000086' => 'otu_seq_comp_appr',
+      '0000085' => 'otu_class_appr',
+      '0000013' => 'env_local_scale',
+      '0000045' => 'target_subfragment',
+    ];
+    return $mappings[$term] ?? $term;
   }
 
   /**
@@ -313,9 +340,12 @@ class BuildDwcHelper {
 
   /**
    * Performs the task of building an occurrences data file.
+   *
+   * @param array $fileMetadata
+   *   Metadata for this file, including the columns to ouput, extracted from
+   *   meta.xml.
    */
   private function buildOccurrenceFile(array $fileMetadata) {
-    $client = ClientBuilder::create()->setHosts([$this->conf['elasticsearchHost']])->build();
     $params = [
       // How long between scroll requests. Should be small!
       'scroll' => '30s',
@@ -325,6 +355,56 @@ class BuildDwcHelper {
         'query' => $this->conf['query'],
       ],
     ];
+    $this->buildOutputFile($fileMetadata, $params, [$this, 'getOccurrenceRowData']);
+  }
+
+  /**
+   * Performs the task of building an events data file.
+   *
+   * @param array $fileMetadata
+   *   Metadata for this file, including the columns to ouput, extracted from
+   *   meta.xml.
+   */
+  private function buildEventFile(array $fileMetadata) {
+    if (empty($this->conf['eventIndex'])) {
+      throw new Exception("Missing eventIndex setting in configuration");
+    }
+    $params = [
+      // How long between scroll requests. Should be small!
+      'scroll' => '30s',
+      'size'   => 1000,
+      'index'  => $this->conf['eventIndex'],
+      'body'   => [
+        'query' => $this->conf['query'],
+      ],
+    ];
+    $this->buildOutputFile($fileMetadata, $params, [$this, 'getEventRowData']);
+  }
+
+  /**
+   * Performs the task of building a DNA dervied data file.
+   *
+   * @param array $fileMetadata
+   *   Metadata for this file, including the columns to ouput, extracted from
+   *   meta.xml.
+   */
+  private function buildDNADerivedDataFile(array $fileMetadata) {
+    $dnaQuery = array_merge($this->conf['query']);
+    $dnaQuery['bool']['must'][] = ['term' => ['occurrence.dna_derived' => TRUE]];
+    $params = [
+      // How long between scroll requests. Should be small!
+      'scroll' => '30s',
+      'size'   => 1000,
+      'index'  => $this->conf['index'],
+      'body'   => [
+        'query' => $dnaQuery,
+      ],
+    ];
+    $this->buildOutputFile($fileMetadata, $params, [$this, 'getDNADerivedDataRowData']);
+  }
+
+  private function buildOutputFile(array $fileMetadata, array $params, callable $rowDataCallback) {
+    $client = ClientBuilder::create()->setHosts([$this->conf['elasticsearchHost']])->build();
     // Execute the search.
     // The response will contain the first batch of documents
     // and a scroll_id.
@@ -336,63 +416,8 @@ class BuildDwcHelper {
     while (isset($response['hits']['hits']) && count($response['hits']['hits']) > 0) {
       foreach ($response['hits']['hits'] as $hit) {
         if ($this->isOccurrenceValid($hit['_source'])) {
-          fputcsv($file, $this->getOccurrenceRowData($hit['_source'], $fileMetadata));
+          fputcsv($file, call_user_func($rowDataCallback, $hit['_source'], $fileMetadata));
         }
-      }
-      // When done, get the new scroll_id in case it changes.
-      $scroll_id = $response['_scroll_id'];
-
-      // Execute a Scroll request and repeat.
-      $response = $client->scroll([
-        'body' => [
-          // Using our previously obtained _scroll_id.
-          'scroll_id' => $scroll_id,
-          // Plus the same timeout window.
-          'scroll'    => '30s',
-        ],
-      ]);
-      // Progress.
-      echo '.';
-    }
-    echo "\n";
-    fclose($file);
-  }
-
-  /**
-   * Performs the task of building an events data file.
-   */
-  private function buildEventFile(array $fileMetadata) {
-    if (empty($this->conf['eventIndex'])) {
-      throw new Exception("Missing eventIndex setting in configuration");
-    }
-    $client = ClientBuilder::create()->setHosts([$this->conf['elasticsearchHost']])->build();
-
-    $params = [
-      // How long between scroll requests. Should be small!
-      'scroll' => '30s',
-      'size'   => 1000,
-      'index'  => $this->conf['eventIndex'],
-      'body'   => [
-        'query' => $this->conf['query'],
-      ],
-    ];
-    // Execute the search.
-    // The response will contain the first batch of documents
-    // and a scroll_id.
-    $response = $client->search($params);
-
-    // Execute the search.
-    // The response will contain the first batch of documents
-    // and a scroll_id.
-    $response = $client->search($params);
-
-    $file = fopen($this->getOutputCsvFileName($fileMetadata), 'w');
-    fputcsv($file, $fileMetadata['columns']);
-
-    // Now we loop until the scroll "cursors" are exhausted.
-    while (isset($response['hits']['hits']) && count($response['hits']['hits']) > 0) {
-      foreach ($response['hits']['hits'] as $hit) {
-        fputcsv($file, $this->getEventRowData($hit['_source'], $fileMetadata));
       }
       // When done, get the new scroll_id in case it changes.
       $scroll_id = $response['_scroll_id'];
@@ -427,8 +452,11 @@ class BuildDwcHelper {
         if ($fileMetadata['type'] === 'Occurrence') {
           $this->buildOccurrenceFile($fileMetadata);
         }
-        else {
+        elseif ($fileMetadata['type'] === 'Event') {
           $this->buildEventFile($fileMetadata);
+        }
+        elseif ($fileMetadata['type'] === 'DNADerivedData') {
+          $this->buildDNADerivedDataFile($fileMetadata);
         }
       }
       if ($this->conf['outputType'] === 'dwca') {
@@ -544,7 +572,7 @@ class BuildDwcHelper {
     ]);
     if (!empty($filter)) {
       $bool['must'][] = [
-        'terms' => ['taxon.group_id' => explode(',', $filter['value'])],
+        'terms' => ['taxon.group_id' => $this->safeExplodeCsvIntArray($filter['value'])],
       ];
     }
   }
@@ -628,7 +656,7 @@ class BuildDwcHelper {
       'taxa_taxon_list_external_key_list',
     ]);
     if (!empty($filter)) {
-      $bool['must'][] = ['terms' => ['taxon.higher_taxon_ids' => explode(',', $filter['value'])]];
+      $bool['must'][] = ['terms' => ['taxon.higher_taxon_ids' => $this->safeExplodeCsvIntArray($filter['value'])]];
     }
   }
 
@@ -731,7 +759,7 @@ class BuildDwcHelper {
         'nested' => [
           'path' => 'location.higher_geography',
           'query' => [
-            'terms' => ['location.higher_geography.id' => explode(',', $filter['value'])],
+            'terms' => ['location.higher_geography.id' => $this->safeExplodeCsvIntArray($filter['value'])],
           ],
         ],
       ];
@@ -1129,7 +1157,7 @@ class BuildDwcHelper {
     if (!empty($filter)) {
       $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'must';
       $bool[$boolClause][] = [
-        'terms' => ['metadata.website.id' => explode(',', $filter['value'])],
+        'terms' => ['metadata.website.id' => $this->safeExplodeCsvIntArray($filter['value'])],
       ];
     }
   }
@@ -1150,7 +1178,7 @@ class BuildDwcHelper {
     if (!empty($filter)) {
       $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'must';
       $bool[$boolClause][] = [
-        'terms' => ['metadata.survey.id' => explode(',', $filter['value'])],
+        'terms' => ['metadata.survey.id' => $this->safeExplodeCsvIntArray($filter['value'])],
       ];
     }
   }
@@ -1207,7 +1235,7 @@ class BuildDwcHelper {
     $filter = $this->getDefinitionFilter($definition, ['group_id']);
     if (!empty($filter)) {
       $bool['must'][] = [
-        'terms' => ['metadata.group.id' => explode(',', $filter['value'])],
+        'terms' => ['metadata.group.id' => $this->safeExplodeCsvIntArray($filter['value'])],
       ];
     }
   }
@@ -1296,9 +1324,9 @@ class BuildDwcHelper {
    *   Array of records, with each record being defined by an associative array
    *   of field values.
    */
-  public function getData(array $options) {
+  public function getData(array $options): array {
     if (!isset($options['table'])) {
-      throw new exception('Please supply the singular name of the table you want to read data from in the options array');
+      throw new Exception('Please supply the singular name of the table you want to read data from in the options array');
     }
     $request = "$this->warehouseUrl/index.php/services/data/$options[table]";
     if (isset($options['id'])) {
@@ -1321,7 +1349,7 @@ class BuildDwcHelper {
    * @return array
    *   List of records returned by the request.
    */
-  private function get($request, $params) {
+  private function get($request, $params): array {
     $params = array_merge([
       'mode' => 'json',
       'auth_token' => $this->readAuth['auth_token'],
@@ -1337,7 +1365,7 @@ class BuildDwcHelper {
    * @return array
    *   Read tokens array.
    */
-  private function getReadAuth() {
+  private function getReadAuth(): array {
     $postargs = "website_id=" . $this->websiteID;
     $nonce = $this->http_post($this->warehouseUrl . '/index.php/services/security/get_read_nonce', $postargs);
     return [
@@ -1354,10 +1382,10 @@ class BuildDwcHelper {
    * @param string $postargs
    *   Query string to include in the post.
    *
-   * @return string
-   *   Response from the warehouse.
+   * @return bool|string
+   *   Response from the cUrl call to the warehouse.
    */
-  private function http_post($url, $postargs = NULL) {
+  private function http_post($url, $postargs = NULL): bool|string {
     $session = curl_init();
     // Set the POST options.
     curl_setopt($session, CURLOPT_URL, $url);
@@ -1373,10 +1401,10 @@ class BuildDwcHelper {
     // Check for an error, or check if the http response was not OK.
     if (curl_errno($session) || $httpCode !== 200) {
       if (curl_errno($session)) {
-        throw new exception(curl_errno($session) . ' - ' . curl_error($session));
+        throw new Exception(curl_errno($session) . ' - ' . curl_error($session));
       }
       else {
-        throw new exception($httpCode . ' - ' . $response);
+        throw new Exception($httpCode . ' - ' . $response);
       }
     }
     curl_close($session);
@@ -1389,7 +1417,7 @@ class BuildDwcHelper {
    * @return string
    *   File name.
    */
-  private function getOutputCsvFileName(array $fileMetadata) {
+  private function getOutputCsvFileName(array $fileMetadata): string {
     if ($this->conf['outputType'] === 'csv' && count($this->dataFiles) === 1) {
       return $this->conf['outputFile'];
     }
@@ -1430,13 +1458,12 @@ class BuildDwcHelper {
    * @return array
    *   CSV data.
    */
-  private function getOccurrenceRowData(array $source, array $fileMetadata) {
+  private function getOccurrenceRowData(array $source, array $fileMetadata): array {
     $points = explode(',', $source['location']['point']);
     $sensitiveOrNotPoint = (isset($source['metadata']['sensitive']) && $source['metadata']['sensitive'] === 'true') ||
       (isset($source['location']['input_sref_system']) && !preg_match('/^\d+$/', $source['location']['input_sref_system']));
     $useGridRefsIfPossible = in_array('useGridRefsIfPossible', $this->conf['options']);
-    $row = [];
-    $mappings = [
+    $availableData = [
       'occurrenceID' => $this->conf['occurrenceIdPrefix'] . $source['id'],
       'id' => $this->conf['occurrenceIdPrefix'] . $source['id'],
       'otherCatalogNumbers' => empty($source['occurrence']['source_system_key']) ? '' : $source['occurrence']['source_system_key'],
@@ -1454,8 +1481,8 @@ class BuildDwcHelper {
       'individualCount' => empty($source['occurrence']['organism_quantity']) ? '' : $source['occurrence']['organism_quantity'],
       'vernacularName' => empty($source['taxon']['vernacular_name']) ? '' : $source['taxon']['vernacular_name'],
       'eventDate' => $this->getDate($source),
-      'year' => $source['event']['year'],
-      'month' => $source['event']['month'],
+      'year' => $source['event']['year'] ?? '',
+      'month' => $source['event']['month'] ?? '',
       'recordedBy' => empty($source['event']['recorded_by']) ? '' : $source['event']['recorded_by'],
       // Tolerate DwC/US English or UK English.
       'licence' => empty($source['metadata']['licence_code']) ? $this->conf['defaultLicenceCode'] : $source['metadata']['licence_code'],
@@ -1470,7 +1497,8 @@ class BuildDwcHelper {
       'datasetID' => $this->getDatasetId($source),
       'collectionCode' => $this->getCollectionCode($source),
       'locality' => empty($source['location']['verbatim_locality']) ? '' : $source['location']['verbatim_locality'],
-      'basisOfRecord' => $this->conf['basisOfRecord'],
+      // DNA may have a different basis of record value.
+      'basisOfRecord' => $source['occurrence']['dna_derived'] === 'true' && isset($this->conf['basisOfRecordDna']) ? $this->conf['basisOfRecordDna'] : $this->conf['basisOfRecord'],
       'identificationVerificationStatus' => $this->getIdentificationVerificationStatus($source),
       'identifiedBy' => empty($source['identification']['identified_by']) ? '' : $source['identification']['identified_by'],
       'occurrenceStatus' => $source['occurrence']['zero_abundance'] === 'true' ? 'absent' : 'present',
@@ -1480,22 +1508,7 @@ class BuildDwcHelper {
       'samplingProtocol' => $source['event']['sampling_protocol'] ?? '',
       'associatedMedia' => $this->getAssociatedMedia('occurrence', $source),
     ];
-    // Fetch field customisations.
-    $customFields = $this->conf['customFields']['occurrence'] ?? [];
-    foreach ($fileMetadata['columns'] as $dwcTerm) {
-      if (isset($customFields[$dwcTerm])) {
-        $fn = 'customGet' . $customFields[$dwcTerm][0];
-        $params = $customFields[$dwcTerm][1];
-        if (!method_exists($this, $fn)) {
-          throw new Exception("Invalid customField function name $fn");
-        }
-        $row[] = $this->$fn($source, $params);
-      }
-      else {
-        $row[] = $mappings[$dwcTerm] ?? '';
-      }
-    }
-    return $row;
+    return $this->getRow('occurrence', $fileMetadata['columns'], $source, $availableData);
   }
 
   /**
@@ -1507,13 +1520,12 @@ class BuildDwcHelper {
    * @return array
    *   CSV data.
    */
-  private function getEventRowData(array $source, array $fileMetadata) {
+  private function getEventRowData(array $source, array $fileMetadata): array {
     $points = explode(',', $source['location']['point']);
     $sensitiveOrNotPoint = (isset($source['metadata']['sensitive']) && $source['metadata']['sensitive'] === 'true') ||
       (isset($source['location']['input_sref_system']) && !preg_match('/^\d+$/', $source['location']['input_sref_system']));
     $useGridRefsIfPossible = in_array('useGridRefsIfPossible', $this->conf['options']);
-    $row = [];
-    $mappings = [
+    $availableData = [
       'eventID' => $this->conf['eventIdPrefix'] . $source['id'],
       'id' => $this->conf['eventIdPrefix'] . $source['id'],
       'parentEventID' => isset($source['event']['parent_event_id']) ? $this->conf['eventIdPrefix'] . $source['event']['parent_event_id'] : NULL,
@@ -1530,16 +1542,73 @@ class BuildDwcHelper {
       'samplingProtocol' => $source['event']['sampling_protocol'] ?? '',
       'associatedMedia' => $this->getAssociatedMedia('event', $source),
     ];
+    return $this->getRow('event', $fileMetadata['columns'], $source, $availableData);
+  }
+
+  /**
+   * Return the array to represent a DNA document as DwcA CSV.
+   *
+   * @param array $source
+   *   ES occurrence document source.
+   *
+   * @return array
+   *   CSV data.
+   */
+  private function getDnaDerivedDataRowData(array $source, array $fileMetadata): array {
+    $availableData = [
+      'occurrenceID' => $this->conf['occurrenceIdPrefix'] . $source['id'],
+      // If an extension, we only support DNA occurrences being an extension of
+      // events, so the coreid will always point to an event.
+      'coreid' => $this->conf['eventIdPrefix'] . $source['event']['event_id'],
+      'dna_sequence' => $source['dna_derived_data']['dna_sequence'] ?? '',
+      'associatedSequences' => implode(';', $source['dna_derived_data']['associated_sequences'] ?? []),
+      'target_gene' => $source['dna_derived_data']['target_gene'] ?? '',
+      'pcr_primer_reference' => $source['dna_derived_data']['pcr_primer_reference'] ?? '',
+      'env_medium' => $source['dna_derived_data']['env_medium'] ?? '',
+      'env_broad_scale' => $source['dna_derived_data']['env_broad_scale'] ?? '',
+      'otu_db' => $source['dna_derived_data']['otu_db'] ?? '',
+      'otu_seq_comp_appr' => $source['dna_derived_data']['otu_seq_comp_appr'] ?? '',
+      'otu_class_appr' => $source['dna_derived_data']['otu_class_appr'] ?? '',
+      'env_local_scale' => $source['dna_derived_data']['env_local_scale'] ?? '',
+      'target_subfragment' => $source['dna_derived_data']['target_subfragment'] ?? '',
+      'pcr_primer_name_forward' => $source['dna_derived_data']['pcr_primer_name_forward'] ?? '',
+      'pcr_primer_forward' => $source['dna_derived_data']['pcr_primer_forward'] ?? '',
+      'pcr_primer_name_reverse' => $source['dna_derived_data']['pcr_primer_name_reverse'] ?? '',
+      'pcr_primer_reverse' => $source['dna_derived_data']['pcr_primer_reverse'] ?? '',
+    ];
+    return $this->getRow('dna_derived_data', $fileMetadata['columns'], $source, $availableData);
+  }
+
+  /**
+   * Build an output row's data array.
+   *
+   * @param string $class
+   *   Type of data to output, occurrence, event or dna_derived_data.
+   * @param array $columns
+   *   List of DwC terms to include in the output, in the order they should appear.
+   * @param array $source
+   *   Document source from Elasticsearch.
+   * @param array $availableData
+   *   Data key/value pairs that can be used in the row.
+   *
+   * @return array
+   *   Output row data array.
+   */
+  function getRow($class, array $columns, array $source, array $availableData): array {
+    $row = [];
     // Fetch field customisations.
-    $customFields = $this->conf['customFields']['event'] ?? [];
-    foreach ($fileMetadata['columns'] as $dwcTerm) {
+    $customFields = $this->conf['customFields'][$class] ?? [];
+    foreach ($columns as $dwcTerm) {
       if (isset($customFields[$dwcTerm])) {
-        $fn = $customFields[$dwcTerm][0];
+        $fn = 'customGet' . $customFields[$dwcTerm][0];
         $params = $customFields[$dwcTerm][1];
-        $row[] = $fn($source, $params);
+        if (!method_exists($this, $fn)) {
+          throw new Exception("Invalid customField function name $fn");
+        }
+        $row[] = $this->$fn($source, $params);
       }
       else {
-        $row[] = $mappings[$dwcTerm] ?? '';
+        $row[] = $availableData[$dwcTerm] ?? '';
       }
     }
     return $row;
@@ -1558,7 +1627,7 @@ class BuildDwcHelper {
    * @return string|null
    *   Attribute value, or NULL if not specified for this record.
    */
-  private function customGetAttributeValue(array $source, array $params) {
+  private function customGetAttributeValue(array $source, array $params): mixed {
     if (!in_array($params[0], ['occurrence', 'event'])) {
       throw new Exception('Incorrect customField structure in configuration file.');
     }
@@ -1589,7 +1658,7 @@ class BuildDwcHelper {
    * @return string
    *   Associative array of found values, encoded as a JSON string.
    */
-  private function customGetAttributesObject(array $source, array $params) {
+  private function customGetAttributesObject(array $source, array $params): string {
     $obj = [];
     foreach ($params[1] as $caption => $attrId) {
       $value = $this->customGetAttributeValue($source, [$params[0], $attrId]);
@@ -1609,7 +1678,7 @@ class BuildDwcHelper {
    * @return string
    *   Formatted remarks.
    */
-  private function formatRemarks($remarks) {
+  private function formatRemarks($remarks): string {
     if (in_array('ipt', $this->conf['options'])) {
       return str_replace(["\r\n", "\r", "\n"], '<br>', trim($remarks));
     }
@@ -1629,7 +1698,7 @@ class BuildDwcHelper {
    *
    * @todo Following is simplistic, doesn't handle YYYY, YYYY-MM, YYYY/YYYY or YYYY-MM/YYYY-MM formats.
    */
-  private function getDate(array $source) {
+  private function getDate(array $source): string {
     $dateStart = $source['event']['date_start'] ?? '';
     $dateEnd = $source['event']['date_end'] ?? '';
     return $dateStart . ($dateStart === $dateEnd ? '' : '/' . $source['event']['date_end']);
@@ -1644,7 +1713,7 @@ class BuildDwcHelper {
    * @return string
    *   Dataset ID or empty string if not present.
    */
-  private function getDatasetId(array $source) {
+  private function getDatasetId(array $source): string {
     if (!empty($this->conf['datasetIdSampleAttrId']) && !empty($source['event']['attributes'])) {
       foreach ($source['event']['attributes'] as $attr) {
         if ($attr['id'] == $this->conf['datasetIdSampleAttrId']) {
@@ -1664,7 +1733,7 @@ class BuildDwcHelper {
    * @return string
    *   CollectionCode string.
    */
-  private function getCollectionCode(array $source) {
+  private function getCollectionCode(array $source): string {
     $website = $source['metadata']['website']['title'];
     $survey = $source['metadata']['survey']['title'];
     $uniquePartOfSurveyName = ucfirst(trim(preg_replace('/^' . $website . '/', '', $survey)));
@@ -1680,7 +1749,7 @@ class BuildDwcHelper {
    * @return string
    *   IdentificationVerificationStatus string.
    */
-  private function getIdentificationVerificationStatus(array $source) {
+  private function getIdentificationVerificationStatus(array $source): string {
     $status = $source['identification']['verification_status'] . $source['identification']['verification_substatus'];
     switch ($status) {
       case 'V0':
@@ -1714,12 +1783,28 @@ class BuildDwcHelper {
    * @return string
    *   String containing | separated list of URLs to media.
    */
-  private function getAssociatedMedia($type, array $source) {
+  private function getAssociatedMedia($type, array $source): string {
     $list = [];
     foreach ($source[$type]['media'] ?? [] as $media) {
       $list[] = $this->warehouseUrl . '/upload/' . $media['path'];
     }
     return implode('|', $list);
+  }
+
+  /**
+   * Explode a CSV integer list into an array, with format check.
+   *
+   * @param string $csv
+   *   Integers as CSV string.
+   *
+   * @return string[]
+   *   Array of integers.
+   */
+  private function safeExplodeCsvIntArray($csv): array {
+    if (!preg_match('/^\d+(,\d+)*$/', str_replace(' ', '', $csv))) {
+      throw new Exception('Invalid CSV integer array: ' . $csv);
+    }
+    return explode(',', $csv);
   }
 
 }
