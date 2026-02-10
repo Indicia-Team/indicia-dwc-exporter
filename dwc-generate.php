@@ -1468,6 +1468,7 @@ class BuildDwcHelper {
     $sensitiveOrNotPoint = (isset($source['metadata']['sensitive']) && $source['metadata']['sensitive'] === 'true') ||
       (isset($source['location']['input_sref_system']) && !preg_match('/^\d+$/', $source['location']['input_sref_system']));
     $useGridRefsIfPossible = in_array('useGridRefsIfPossible', $this->conf['options']);
+    $isDnaDerived = $source['occurrence']['dna_derived'] ?? 'false' === 'true';
     $availableData = [
       'occurrenceID' => $this->conf['occurrenceIdPrefix'] . $source['id'],
       'id' => $this->conf['occurrenceIdPrefix'] . $source['id'],
@@ -1503,7 +1504,7 @@ class BuildDwcHelper {
       'collectionCode' => $this->getCollectionCode($source),
       'locality' => empty($source['location']['verbatim_locality']) ? '' : $source['location']['verbatim_locality'],
       // DNA may have a different basis of record value.
-      'basisOfRecord' => $source['occurrence']['dna_derived'] === 'true' && isset($this->conf['basisOfRecordDna']) ? $this->conf['basisOfRecordDna'] : $this->conf['basisOfRecord'],
+      'basisOfRecord' => $isDnaDerived && isset($this->conf['basisOfRecordDna']) ? $this->conf['basisOfRecordDna'] : $this->conf['basisOfRecord'],
       'identificationVerificationStatus' => $this->getIdentificationVerificationStatus($source),
       'identifiedBy' => empty($source['identification']['identified_by']) ? '' : $source['identification']['identified_by'],
       'occurrenceStatus' => $source['occurrence']['zero_abundance'] === 'true' ? 'absent' : 'present',
