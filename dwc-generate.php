@@ -240,12 +240,12 @@ class BuildDwcHelper {
     }
     $this->dataFiles[] = $this->getFileMetadataFromXml($core->item(0));
     $extensions = $archive->item(0)->getElementsByTagName('extension');
-    if (count($extensions) > 0 && !in_array('id', $this->dataFiles[0]['columns'])) {
+    if (count($extensions) > 0 && !in_array('id', $this->dataFiles[0]['extensionMappingColumns'])) {
       throw new Exception('Meta.xml file must describe an id column for the core file when extensions are present.');
     }
     foreach ($extensions as $extension) {
       $extMetadata = $this->getFileMetadataFromXml($extension);
-      if (!in_array('coreid', $extMetadata['columns'])) {
+      if (!in_array('coreid', $extMetadata['extensionMappingColumns'])) {
         throw new Exception('Meta.xml file must describe a coreid column for each extension.');
       }
       $this->dataFiles[] = $extMetadata;
@@ -272,6 +272,7 @@ class BuildDwcHelper {
     $r = [
       'type' => $matches['type'],
       'columns' => [],
+      'extensionMappingColumns' => [],
     ];
     // The filename in the metadata files locations elements are only used for
     // the components of a DwC-A export, or if there are multiple CSV files
@@ -282,11 +283,15 @@ class BuildDwcHelper {
     foreach ($el->childNodes as $pos => $childEl) {
       if (is_a($childEl, 'DOMElement')) {
         $index = (integer) $childEl->getAttribute('index') === '' ? $pos : $childEl->getAttribute('index');
-        if (isset($r['columns'][$index])) {
-          throw new Exception("Duplicate index $index in meta.xml list of fields.");
-        }
+        // Duplicate index is allowed, e.g. if <id> and <field term="eventID">
+        // both at index 0 which clarifies the dual purpose of the column
+        // (both an event ID and a core ID for linking to extensions).
         if ($childEl->nodeName === 'id' || $childEl->nodeName === 'coreid') {
           $r['columns'][$index] = $childEl->nodeName;
+          // Track the presence of id and coreid separately to other columns so
+          // their presence isn't overwritten when another column definition
+          // has the same index.
+          $r['extensionMappingColumns'][$index] = $childEl->nodeName;
         }
         elseif ($childEl->nodeName === 'field') {
           $r['columns'][$index] = $this->mapDwcTermToColumnName(basename($childEl->getAttribute('term')));
@@ -1560,6 +1565,7 @@ class BuildDwcHelper {
       // If an extension, we only support DNA occurrences being an extension of
       // events, so the coreid will always point to an event.
       'coreid' => $this->conf['eventIdPrefix'] . $source['event']['event_id'],
+      'eventID' => $this->conf['eventIdPrefix'] . $source['event']['event_id'],
       'dna_sequence' => $source['dna_derived_data']['dna_sequence'] ?? '',
       'associatedSequences' => implode(';', $source['dna_derived_data']['associated_sequences'] ?? []),
       'target_gene' => $source['dna_derived_data']['target_gene'] ?? '',
@@ -1611,7 +1617,7 @@ class BuildDwcHelper {
         $row[] = $availableData[$dwcTerm] ?? '';
       }
     }
-    return $row;
+    return array_values($row);
   }
 
   /**

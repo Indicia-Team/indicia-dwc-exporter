@@ -5,13 +5,14 @@
     <files>
       <location>events.csv</location>
     </files>
-    <field index="1" term="http://rs.tdwg.org/dwc/terms/eventID" />
-    <field index="2" term="http://rs.tdwg.org/dwc/terms/parentEventID" />
-    <field index="3" term="http://rs.tdwg.org/dwc/terms/eventDate" />
-    <field index="4" term="http://rs.tdwg.org/dwc/terms/coordinateUncertaintyInMeters" />
-    <field index="5" term="http://rs.tdwg.org/dwc/terms/decimalLatitude" />
-    <field index="6" term="http://rs.tdwg.org/dwc/terms/decimalLongitude" />
-    <field index="7" term="http://rs.tdwg.org/dwc/terms/locality" />
-    <field index="8" term="http://rs.tdwg.org/dwc/terms/eventRemarks" />
+    <id index="0" />
+    <field index="0" term="http://rs.tdwg.org/dwc/terms/eventID" />
+    <field index="1" term="http://rs.tdwg.org/dwc/terms/parentEventID" />
+    <field index="2" term="http://rs.tdwg.org/dwc/terms/eventDate" />
+    <field index="3" term="http://rs.tdwg.org/dwc/terms/coordinateUncertaintyInMeters" />
+    <field index="4" term="http://rs.tdwg.org/dwc/terms/decimalLatitude" />
+    <field index="5" term="http://rs.tdwg.org/dwc/terms/decimalLongitude" />
+    <field index="6" term="http://rs.tdwg.org/dwc/terms/locality" />
+    <field index="7" term="http://rs.tdwg.org/dwc/terms/eventRemarks" />
   </core>
 </archive>

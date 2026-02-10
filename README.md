@@ -187,6 +187,7 @@ For occurrence datasets, the following field terms are supported:
 * http://rs.tdwg.org/dwc/terms/vernacularName
 
 For DNA derived datasets, the following field terms are supported:
+* http://rs.tdwg.org/dwc/terms/eventID
 * http://rs.tdwg.org/dwc/terms/occurrenceID
 * http://rs.gbif.org/terms/dna_sequence
 * http://rs.tdwg.org/dwc/terms/associatedSequences
@@ -205,10 +206,13 @@ For DNA derived datasets, the following field terms are supported:
 * http://rs.gbif.org/terms/pcr_primer_reverse
 
 When your meta.xml file contains a core event file and an extension occurrence file, you should add
-an element called `<id>` to the list of fields for the event, plus `<coreid>` to the list of fields
-for the occurrence. See https://dwc.tdwg.org/text/#212-elements. If the meta.xml file contains a
-core event file, an occurrence file and a DNA derived data file then also add an element called
-`<coreid>` to the DNA derived data file.
+an element called `<id>` to the the list of fields for the event, plus `<coreid>` to the list of
+fields for the occurrence. Both should be at the start of the list of columns with index "0" but it
+is acceptable to also define the eventID field column as index 0 immediately after the coreid or id
+column in the list, so that a single column is output which serves both purposes. See
+https://dwc.tdwg.org/text/#212-elements. If the meta.xml file contains a core event file, an
+occurrence file and a DNA derived data file then also add an element called `<coreid>` to the start
+of the DNA derived data file columns list at index 0. See the examples folder.
 
 # Warehouse connection config file
 
