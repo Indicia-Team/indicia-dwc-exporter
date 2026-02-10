@@ -360,7 +360,7 @@ class BuildDwcHelper {
         'query' => $this->conf['query'],
       ],
     ];
-    $this->buildOutputFile($fileMetadata, $params, [$this, 'getOccurrenceRowData']);
+    $this->buildOutputFile($fileMetadata, $params, [$this, 'getOccurrenceRowData'], 'Occurrence');
   }
 
   /**
@@ -383,7 +383,8 @@ class BuildDwcHelper {
         'query' => $this->conf['query'],
       ],
     ];
-    $this->buildOutputFile($fileMetadata, $params, [$this, 'getEventRowData']);
+    echo "Event columns: " . implode(', ', $fileMetadata['columns']) . "\n";
+    $this->buildOutputFile($fileMetadata, $params, [$this, 'getEventRowData'], 'Event');
   }
 
   /**
@@ -405,10 +406,10 @@ class BuildDwcHelper {
         'query' => $dnaQuery,
       ],
     ];
-    $this->buildOutputFile($fileMetadata, $params, [$this, 'getDNADerivedDataRowData']);
+    $this->buildOutputFile($fileMetadata, $params, [$this, 'getDNADerivedDataRowData'], 'DNADerivedData');
   }
 
-  private function buildOutputFile(array $fileMetadata, array $params, callable $rowDataCallback) {
+  private function buildOutputFile(array $fileMetadata, array $params, callable $rowDataCallback, $class) {
     $client = ClientBuilder::create()->setHosts([$this->conf['elasticsearchHost']])->build();
     // Execute the search.
     // The response will contain the first batch of documents
@@ -416,13 +417,14 @@ class BuildDwcHelper {
     $response = $client->search($params);
     $file = fopen($this->getOutputCsvFileName($fileMetadata), 'w');
     fputcsv($file, $fileMetadata['columns']);
-
     // Now we loop until the scroll "cursors" are exhausted.
     while (isset($response['hits']['hits']) && count($response['hits']['hits']) > 0) {
       foreach ($response['hits']['hits'] as $hit) {
-        if ($this->isOccurrenceValid($hit['_source'])) {
-          fputcsv($file, call_user_func($rowDataCallback, $hit['_source'], $fileMetadata));
+        if ($class === 'Occurrence' && !$this->isOccurrenceValid($hit['_source'])) {
+          continue;
         }
+        $rowData = call_user_func($rowDataCallback, $hit['_source'], $fileMetadata);
+        fputcsv($file, $rowData);
       }
       // When done, get the new scroll_id in case it changes.
       $scroll_id = $response['_scroll_id'];
@@ -1536,8 +1538,8 @@ class BuildDwcHelper {
       'id' => $this->conf['eventIdPrefix'] . $source['id'],
       'parentEventID' => isset($source['event']['parent_event_id']) ? $this->conf['eventIdPrefix'] . $source['event']['parent_event_id'] : NULL,
       'eventDate' => $this->getDate($source),
-      'year' => $source['event']['year'],
-      'month' => $source['event']['month'],
+      'year' => $source['event']['year'] ?? '',
+      'month' => $source['event']['month'] ?? '',
       'coordinateUncertaintyInMeters' => empty($source['location']['coordinate_uncertainty_in_meters']) ? '' : $source['location']['coordinate_uncertainty_in_meters'],
       'gridReference' => $useGridRefsIfPossible && $sensitiveOrNotPoint ? $source['location']['output_sref'] : '',
       'decimalLatitude' => $useGridRefsIfPossible && $sensitiveOrNotPoint ? '' : $points[0],
