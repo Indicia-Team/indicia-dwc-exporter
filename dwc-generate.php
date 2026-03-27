@@ -155,10 +155,10 @@ class BuildDwcHelper {
     }
     // Apply shortcut filters for survey ID and higher geography.
     if (!empty($this->conf['surveyId'])) {
-      $this->conf['query']['bool']['must'][] = ['term' => ['metadata.survey.id' => $this->conf['surveyId']]];
+      $this->conf['query']['bool']['filter'][] = ['term' => ['metadata.survey.id' => $this->conf['surveyId']]];
     }
     if (!empty($this->conf['higherGeographyId'])) {
-      $this->conf['query']['bool']['must'][] = [
+      $this->conf['query']['bool']['filter'][] = [
         'nested' => [
           'path' => 'location.higher_geography',
           'query' => [
@@ -396,7 +396,7 @@ class BuildDwcHelper {
       'size'   => $this->conf['batchSize'],
       'index'  => $this->conf['eventIndex'],
       'body'   => [
-        'query' => $this->conf['query'],
+        'query' => $this->conf['eventQuery'] ?? $this->conf['query'],
       ],
     ];
     echo "Event columns: " . implode(', ', $fileMetadata['columns']) . "\n";
@@ -412,7 +412,7 @@ class BuildDwcHelper {
    */
   private function buildDNADerivedDataFile(array $fileMetadata) {
     $dnaQuery = array_merge($this->conf['query']);
-    $dnaQuery['bool']['must'][] = ['term' => ['occurrence.dna_derived' => TRUE]];
+    $dnaQuery['bool']['filter'][] = ['term' => ['occurrence.dna_derived' => TRUE]];
     $params = [
       // Must exceed the time needed to process/write each batch.
       'scroll' => $this->conf['scrollKeepAlive'],
@@ -579,7 +579,7 @@ class BuildDwcHelper {
     ]);
     $definition = json_decode($filter[0]['definition'], TRUE);
     $bool = [
-      'must' => [
+      'filter' => [
         ['term' => ['metadata.confidential' => FALSE]],
         ['term' => ['metadata.trial' => FALSE]],
         ['term' => ['metadata.release_status' => 'R']],
@@ -592,7 +592,7 @@ class BuildDwcHelper {
     ];
     // Grid system if output is to the NBN.
     if (in_array('useGridRefsIfPossible', $this->conf['options'])) {
-      $bool['must'][] = [
+      $bool['filter'][] = [
         'terms' => [
           'location.output_sref_system.keyword' => [
             'OSGB',
@@ -665,7 +665,7 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersTaxonGroupList(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, [
@@ -673,7 +673,7 @@ class BuildDwcHelper {
       'taxon_group_id',
     ]);
     if (!empty($filter)) {
-      $bool['must'][] = [
+      $bool['filter'][] = [
         'terms' => ['taxon.group_id' => $this->safeExplodeCsvIntArray($filter['value'])],
       ];
     }
@@ -685,7 +685,7 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    * @param string $filterField
    *   Name of the field to filter on ('id' or 'taxon_meaning_id').
    * @param string $filterValues
@@ -704,7 +704,7 @@ class BuildDwcHelper {
       $keys[] = $taxon['external_key'];
     }
     $keys = array_unique($keys);
-    $bool['must'][] = ['terms' => ['taxon.higher_taxon_ids' => $keys]];
+    $bool['filter'][] = ['terms' => ['taxon.higher_taxon_ids' => $keys]];
   }
 
   /**
@@ -713,7 +713,7 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersTaxaTaxonList(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, [
@@ -733,7 +733,7 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersTaxonMeaning(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, [
@@ -751,14 +751,14 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersTaxaTaxonListExternalKey(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, [
       'taxa_taxon_list_external_key_list',
     ]);
     if (!empty($filter)) {
-      $bool['must'][] = ['terms' => ['taxon.higher_taxon_ids' => $this->safeExplodeCsvIntArray($filter['value'])]];
+      $bool['filter'][] = ['terms' => ['taxon.higher_taxon_ids' => $this->safeExplodeCsvIntArray($filter['value'])]];
     }
   }
 
@@ -768,14 +768,14 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersTaxonRankSortOrder(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ['taxon_rank_sort_order']);
     // Filter op can be =, >= or <=.
     if (!empty($filter)) {
       if ($filter['op'] === '=') {
-        $bool['must'][] = [
+        $bool['filter'][] = [
           'match' => [
             'taxon.taxon_rank_sort_order' => $filter['value'],
           ],
@@ -784,7 +784,7 @@ class BuildDwcHelper {
       else {
         $gte = $filter['op'] === '>=' ? $filter['value'] : NULL;
         $lte = $filter['op'] === '<=' ? $filter['value'] : NULL;
-        $bool['must'][] = [
+        $bool['filter'][] = [
           'range' => [
             'taxon.taxon_rank_sort_order' => [
               'gte' => $gte,
@@ -804,13 +804,13 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyFlagFilter($flag, array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ["{$flag}_flag"]);
     // Filter op can be =, >= or <=.
     if (!empty($filter) && $filter['value'] !== 'all') {
-      $bool['must'][] = [
+      $bool['filter'][] = [
         'match' => [
           "taxon.$flag" => $filter['value'] === 'Y',
         ],
@@ -827,11 +827,11 @@ class BuildDwcHelper {
    * @param string $definition
    *   WKT for the searchArea in EPSG:4326.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersSearchArea($definition, array &$bool) {
     if (!empty($definition['searchArea'])) {
-      $bool['must'][] = [
+      $bool['filter'][] = [
         'geo_shape' => [
           'location.geom' => [
             'shape' => $definition['searchArea'],
@@ -848,7 +848,7 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersIndexedLocationList(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, [
@@ -856,7 +856,7 @@ class BuildDwcHelper {
       'indexed_location_id',
     ]);
     if (!empty($filter)) {
-      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'must';
+      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'filter';
       $bool[$boolClause][] = [
         'nested' => [
           'path' => 'location.higher_geography',
@@ -878,7 +878,7 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersDate(array $definition, array &$bool) {
     $esFields = [
@@ -893,7 +893,7 @@ class BuildDwcHelper {
     $fieldName = $definition['date_type'] === 'recorded' ? "date_year" : "$definition[date_type]_date_year";
     if (!empty($definition[$fieldName]) && !empty($definition[$fieldName . '_op'])) {
       if ($definition[$fieldName . '_op'] === '=') {
-        $bool['must'][] = [
+        $bool['filter'][] = [
           'term' => [
             'event.year' => $definition[$fieldName],
           ],
@@ -901,7 +901,7 @@ class BuildDwcHelper {
       }
       else {
         $esOp = $definition[$fieldName . '_op'] === '>=' ? 'gte' : 'lte';
-        $bool['must'][] = [
+        $bool['filter'][] = [
           'range' => [
             'event.year' => [
               $esOp => $definition[$fieldName],
@@ -932,7 +932,7 @@ class BuildDwcHelper {
               strtolower($value)
             );
           }
-          $bool['must'][] = [
+          $bool['filter'][] = [
             'range' => [
               $esFields[$definition['date_type']] => [
                 $esOp => $value,
@@ -952,7 +952,7 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersQuality(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ['quality']);
@@ -972,7 +972,7 @@ class BuildDwcHelper {
           case 'C3':
             $defs[] = [
               'bool' => [
-                'must' => [
+                'filter' => [
                   ['term' => ['identification.verification_status' => 'C']],
                   ['term' => ['identification.verification_substatus' => 3]],
                 ],
@@ -990,7 +990,7 @@ class BuildDwcHelper {
           case 'P':
             $defs[] = [
               'bool' => [
-                'must' => [
+                'filter' => [
                   ['term' => ['identification.verification_status' => 'C']],
                   ['term' => ['identification.verification_substatus' => 0]],
                 ],
@@ -1011,7 +1011,7 @@ class BuildDwcHelper {
           case 'R4':
             $defs[] = [
               'bool' => [
-                'must' => [
+                'filter' => [
                   ['term' => ['identification.verification_status' => 'R']],
                   ['term' => ['identification.verification_substatus' => 4]],
                 ],
@@ -1022,7 +1022,7 @@ class BuildDwcHelper {
           case 'R5':
             $defs[] = [
               'bool' => [
-                'must' => [
+                'filter' => [
                   ['term' => ['identification.verification_status' => 'R']],
                   ['term' => ['identification.verification_substatus' => 5]],
                 ],
@@ -1038,7 +1038,7 @@ class BuildDwcHelper {
           case 'V1':
             $defs[] = [
               'bool' => [
-                'must' => [
+                'filter' => [
                   ['term' => ['identification.verification_status' => 'V']],
                   ['term' => ['identification.verification_substatus' => 1]],
                 ],
@@ -1049,7 +1049,7 @@ class BuildDwcHelper {
           case 'V2':
             $defs[] = [
               'bool' => [
-                'must' => [
+                'filter' => [
                   ['term' => ['identification.verification_status' => 'V']],
                   ['term' => ['identification.verification_substatus' => 2]],
                 ],
@@ -1068,7 +1068,7 @@ class BuildDwcHelper {
                   // Or plausible.
                   [
                     'bool' => [
-                      'must' => [
+                      'filter' => [
                         ['term' => ['identification.verification_status' => 'C']],
                         ['term' => ['identification.verification_substatus' => 3]],
                       ],
@@ -1106,7 +1106,7 @@ class BuildDwcHelper {
           case 'C':
             $defs[] = [
               'bool' => [
-                'must' => [
+                'filter' => [
                   ['term' => ['identification.recorder_certainty.keyword' => 'Certain']],
                 ],
                 'must_not' => [
@@ -1132,7 +1132,7 @@ class BuildDwcHelper {
           case 'L':
             $defs[] = [
               'bool' => [
-                'must' => [
+                'filter' => [
                   [
                     'terms' => [
                       'identification.recorder_certainty.keyword' => [
@@ -1154,7 +1154,7 @@ class BuildDwcHelper {
         }
       }
       if (!empty($defs)) {
-        $boolGroup = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'must';
+        $boolGroup = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'filter';
         if (count($defs) === 1) {
           // Single filter can be simplified.
           $bool[$boolGroup][] = [array_keys($defs[0])[0] => array_values($defs[0])[0]];
@@ -1173,14 +1173,14 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersIdentificationDifficulty(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ['identification_difficulty']);
     if (!empty($filter) && !empty($filter['op'])) {
       if (in_array($filter['op'], ['>=', '<='])) {
         $test = $filter['op'] === '>=' ? 'gte' : 'lte';
-        $bool['must'][] = [
+        $bool['filter'][] = [
           'range' => [
             'identification.auto_checks.identification_difficulty' => [
               $test => $filter['value'],
@@ -1189,7 +1189,7 @@ class BuildDwcHelper {
         ];
       }
       else {
-        $bool['must'][] = ['term' => ['identification.auto_checks.identification_difficulty' => $filter['value']]];
+        $bool['filter'][] = ['term' => ['identification.auto_checks.identification_difficulty' => $filter['value']]];
       }
     }
   }
@@ -1203,20 +1203,20 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersRuleChecks(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ['autochecks']);
     if (!empty($filter)) {
       if (in_array($filter['value'], ['P', 'F'])) {
         // Pass or Fail options are auto-checks from the Data Cleaner module.
-        $bool['must'][] = [
+        $bool['filter'][] = [
           'match' => [
             'identification.auto_checks.result' => $filter['value'] === 'P',
           ],
         ];
         if ($filter['value'] === 'P') {
-          $bool['must'][] = [
+          $bool['filter'][] = [
             'query_string' => ['query' => '_exists_:identification.auto_checks.verification_rule_types_applied'],
           ];
         }
@@ -1230,13 +1230,13 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersAutoCheckRule(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ['autocheck_rule']);
     if (!empty($filter)) {
       $value = str_replace('_', '', $filter['value']);
-      $bool['must'][] = [
+      $bool['filter'][] = [
         'term' => ['identification.auto_checks.output.rule_type' => $value],
       ];
     }
@@ -1249,7 +1249,7 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersWebsiteList(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, [
@@ -1257,7 +1257,7 @@ class BuildDwcHelper {
       'website_id',
     ]);
     if (!empty($filter)) {
-      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'must';
+      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'filter';
       $bool[$boolClause][] = [
         'terms' => ['metadata.website.id' => $this->safeExplodeCsvIntArray($filter['value'])],
       ];
@@ -1270,7 +1270,7 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersSurveyList(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, [
@@ -1278,7 +1278,7 @@ class BuildDwcHelper {
       'survey_id',
     ]);
     if (!empty($filter)) {
-      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'must';
+      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'filter';
       $bool[$boolClause][] = [
         'terms' => ['metadata.survey.id' => $this->safeExplodeCsvIntArray($filter['value'])],
       ];
@@ -1291,12 +1291,12 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersImportGuidList(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ['import_guid_list']);
     if (!empty($filter)) {
-      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'must';
+      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'filter';
       $bool[$boolClause][] = [
         'terms' => [
           'metadata.import_guid' => explode(',', str_replace("'", '', $filter['value'])),
@@ -1311,12 +1311,12 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersInputFormList(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ['input_form_list']);
     if (!empty($filter)) {
-      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'must';
+      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'filter';
       $bool[$boolClause][] = [
         'terms' => [
           'metadata.input_form' => explode(',', str_replace("'", '', $filter['value'])),
@@ -1331,12 +1331,12 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersGroupId(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ['group_id']);
     if (!empty($filter)) {
-      $bool['must'][] = [
+      $bool['filter'][] = [
         'terms' => ['metadata.group.id' => $this->safeExplodeCsvIntArray($filter['value'])],
       ];
     }
@@ -1348,7 +1348,7 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersTaxaScratchpadList(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ['taxa_scratchpad_list_id']);
@@ -1364,7 +1364,7 @@ class BuildDwcHelper {
       foreach ($taxonData as $taxon) {
         $keys[] = $taxon['external_key'];
       }
-      $bool['must'][] = ['terms' => ['taxon.higher_taxon_ids' => $keys]];
+      $bool['filter'][] = ['terms' => ['taxon.higher_taxon_ids' => $keys]];
     }
   }
 
@@ -1374,18 +1374,18 @@ class BuildDwcHelper {
    * @param array $definition
    *   Definition loaded for the Indicia filter.
    * @param array $bool
-   *   Bool clauses that filters can be added to (e.g. $bool['must']).
+   *   Bool clauses that filters can be added to (e.g. $bool['filter']).
    */
   private function applyUserFiltersHasPhotos(array $definition, array &$bool) {
     $filter = $this->getDefinitionFilter($definition, ['has_photos']);
     if (!empty($filter)) {
-      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'must';
+      $boolClause = !empty($filter['op']) && $filter['op'] === 'not in' ? 'must_not' : 'filter';
       $bool[$boolClause][] = [
         'nested' => [
           'path' => 'occurrence.media',
           'query' => [
             'bool' => [
-              'must' => ['exists' => ['field' => 'occurrence.media']],
+              'filter' => ['exists' => ['field' => 'occurrence.media']],
             ],
           ],
         ],
@@ -1407,7 +1407,7 @@ class BuildDwcHelper {
       $websiteIds[] = (integer) $website['id'];
     }
     sort($websiteIds);
-    $bool['must'][] = [
+    $bool['filter'][] = [
       'terms' => ['metadata.website.id' => $websiteIds],
     ];
   }

@@ -34,7 +34,7 @@ script. This file contains the following options:
     ...
     "query": {
       "bool": {
-        "must": {
+        "filter": {
           "term": {"metadata.website.id": 2}
         }
       }
@@ -42,6 +42,9 @@ script. This file contains the following options:
     ...
   }
   ```
+* eventQuery - if event data is being output, then define a query here which will be used to filter
+  the data fetched from the event index. If not specified, then the query configuration will be
+  used.
 * filterId - optional, but either query or filterId must be specified and both are applied if both
   are present. ID of the filter record on the warehouse which will be used to dynamically generate
   the query. The list of websites available for data flow (according to the website registration
