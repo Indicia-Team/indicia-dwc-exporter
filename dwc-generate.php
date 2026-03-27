@@ -141,10 +141,14 @@ class BuildDwcHelper {
     $this->conf = array_merge([
       'basisOfRecord' => 'HumanObservation',
       'basisOfRecordDna' => 'MaterialSample',
+      'batchSize' => 1000,
       'defaultLicenceCode' => '',
       'eventIdPrefix' => '',
       'occurrenceIdPrefix' => '',
       'outputFile' => 'exports/' . preg_replace('/[^a-z0-9]/', '_', strtolower($baseName)) . '.zip',
+      'scrollKeepAlive' => '2m',
+      'scrollRetryCount' => 1,
+      'scrollRetryDelayMs' => 500,
     ], $this->conf);
     if (!empty($this->conf['filterId'])) {
       $this->loadFilterIntoConfig();
@@ -217,6 +221,18 @@ class BuildDwcHelper {
     }
     if (!empty($this->conf['higherGeographyId']) && !preg_match('/^\d+$/', $this->conf['higherGeographyId'])) {
       throw new Exception('The higherGeographyId setting should be an integer containing a location ID.');
+    }
+    if (!preg_match('/^\d+$/', (string) $this->conf['batchSize']) || (int) $this->conf['batchSize'] < 1) {
+      throw new Exception('The batchSize setting should be a positive integer.');
+    }
+    if (!preg_match('/^\d+[smhd]$/', (string) $this->conf['scrollKeepAlive'])) {
+      throw new Exception('The scrollKeepAlive setting should be a duration like 30s, 2m, 1h or 1d.');
+    }
+    if (!preg_match('/^\d+$/', (string) $this->conf['scrollRetryCount'])) {
+      throw new Exception('The scrollRetryCount setting should be a non-negative integer.');
+    }
+    if (!preg_match('/^\d+$/', (string) $this->conf['scrollRetryDelayMs'])) {
+      throw new Exception('The scrollRetryDelayMs setting should be a non-negative integer (milliseconds).');
     }
   }
 
@@ -352,9 +368,9 @@ class BuildDwcHelper {
    */
   private function buildOccurrenceFile(array $fileMetadata) {
     $params = [
-      // How long between scroll requests. Should be small!
-      'scroll' => '30s',
-      'size'   => 1000,
+      // Must exceed the time needed to process/write each batch.
+      'scroll' => $this->conf['scrollKeepAlive'],
+      'size'   => $this->conf['batchSize'],
       'index'  => $this->conf['index'],
       'body'   => [
         'query' => $this->conf['query'],
@@ -375,9 +391,9 @@ class BuildDwcHelper {
       throw new Exception("Missing eventIndex setting in configuration");
     }
     $params = [
-      // How long between scroll requests. Should be small!
-      'scroll' => '30s',
-      'size'   => 1000,
+      // Must exceed the time needed to process/write each batch.
+      'scroll' => $this->conf['scrollKeepAlive'],
+      'size'   => $this->conf['batchSize'],
       'index'  => $this->conf['eventIndex'],
       'body'   => [
         'query' => $this->conf['query'],
@@ -398,9 +414,9 @@ class BuildDwcHelper {
     $dnaQuery = array_merge($this->conf['query']);
     $dnaQuery['bool']['must'][] = ['term' => ['occurrence.dna_derived' => TRUE]];
     $params = [
-      // How long between scroll requests. Should be small!
-      'scroll' => '30s',
-      'size'   => 1000,
+      // Must exceed the time needed to process/write each batch.
+      'scroll' => $this->conf['scrollKeepAlive'],
+      'size'   => $this->conf['batchSize'],
       'index'  => $this->conf['index'],
       'body'   => [
         'query' => $dnaQuery,
@@ -414,35 +430,114 @@ class BuildDwcHelper {
     // Execute the search.
     // The response will contain the first batch of documents
     // and a scroll_id.
-    $response = $client->search($params);
+    $response = $client->search($params)->asArray();
     $file = fopen($this->getOutputCsvFileName($fileMetadata), 'w');
-    fputcsv($file, $fileMetadata['columns']);
-    // Now we loop until the scroll "cursors" are exhausted.
-    while (isset($response['hits']['hits']) && count($response['hits']['hits']) > 0) {
-      foreach ($response['hits']['hits'] as $hit) {
-        if ($class === 'Occurrence' && !$this->isOccurrenceValid($hit['_source'])) {
-          continue;
-        }
-        $rowData = call_user_func($rowDataCallback, $hit['_source'], $fileMetadata);
-        fputcsv($file, $rowData);
-      }
-      // When done, get the new scroll_id in case it changes.
-      $scroll_id = $response['_scroll_id'];
-
-      // Execute a Scroll request and repeat.
-      $response = $client->scroll([
-        'body' => [
-          // Using our previously obtained _scroll_id.
-          'scroll_id' => $scroll_id,
-          // Plus the same timeout window.
-          'scroll'    => '30s',
-        ],
-      ]);
-      // Progress.
-      echo '.';
+    if ($file === FALSE) {
+      throw new Exception('Unable to open output CSV file for writing: ' . $this->getOutputCsvFileName($fileMetadata));
     }
-    echo "\n";
-    fclose($file);
+    fputcsv($file, $fileMetadata['columns']);
+    $expectedHits = is_array($response['hits']['total'] ?? NULL)
+      ? ($response['hits']['total']['value'] ?? NULL)
+      : ($response['hits']['total'] ?? NULL);
+    $scrollId = $response['_scroll_id'] ?? NULL;
+    $pages = 0;
+    $hitsSeen = 0;
+    $writtenRows = 0;
+    $skippedRows = 0;
+
+    try {
+      // Now we loop until the scroll "cursors" are exhausted.
+      while (isset($response['hits']['hits']) && count($response['hits']['hits']) > 0) {
+        $pages++;
+        foreach ($response['hits']['hits'] as $hit) {
+          $hitsSeen++;
+          if ($class === 'Occurrence' && !$this->isOccurrenceValid($hit['_source'])) {
+            $skippedRows++;
+            continue;
+          }
+          $rowData = call_user_func($rowDataCallback, $hit['_source'], $fileMetadata);
+          fputcsv($file, $rowData);
+          $writtenRows++;
+        }
+        if (empty($scrollId)) {
+          throw new Exception('Elasticsearch scroll response did not include a scroll_id; cannot continue pagination safely.');
+        }
+        // Execute a Scroll request and repeat.
+        $response = $this->doScrollRequestWithRetry($client, $scrollId, $class, $pages);
+        // When done, get the new scroll_id in case it changes.
+        $scrollId = $response['_scroll_id'] ?? $scrollId;
+        // Progress.
+        echo '.';
+      }
+      echo "\n";
+      echo "{$class} export stats: pages=$pages, hitsSeen=$hitsSeen, rowsWritten=$writtenRows, rowsSkipped=$skippedRows";
+      if ($expectedHits !== NULL) {
+        echo ", expectedHits=$expectedHits";
+      }
+      echo "\n";
+      if ($expectedHits !== NULL && $hitsSeen < $expectedHits) {
+        echo "WARNING: Fewer hits processed than expected. This can indicate expired scroll context; consider increasing scrollKeepAlive.\n";
+      }
+    }
+    finally {
+      if (!empty($scrollId)) {
+        // Best-effort cleanup of scroll context.
+        try {
+          $client->clearScroll([
+            'body' => [
+              'scroll_id' => [$scrollId],
+            ],
+          ]);
+        }
+        catch (Exception $e) {
+          echo "Warning: unable to clear scroll context: {$e->getMessage()}\n";
+        }
+      }
+      fclose($file);
+    }
+  }
+
+  /**
+   * Execute a scroll request with limited retries for transient errors.
+   *
+   * @param mixed $client
+   *   Elasticsearch client instance.
+   * @param string $scrollId
+   *   Current scroll ID.
+   * @param string $class
+   *   Export class being processed.
+   * @param int $page
+   *   Current page number.
+   *
+   * @return array
+   *   Scroll response.
+   */
+  private function doScrollRequestWithRetry($client, string $scrollId, string $class, int $page): array {
+    $maxRetries = (int) $this->conf['scrollRetryCount'];
+    $retryDelayMs = (int) $this->conf['scrollRetryDelayMs'];
+    $attempt = 0;
+    while (TRUE) {
+      try {
+        return $client->scroll([
+          'body' => [
+            // Using our previously obtained _scroll_id.
+            'scroll_id' => $scrollId,
+            // Plus the same timeout window.
+            'scroll' => $this->conf['scrollKeepAlive'],
+          ],
+        ])->asArray();
+      }
+      catch (Throwable $e) {
+        if ($attempt >= $maxRetries) {
+          throw new Exception("Scroll request failed after " . ($attempt + 1) . " attempt(s) for $class page $page: " . $e->getMessage(), 0, $e);
+        }
+        $attempt++;
+        echo "\nWarning: scroll request failed for $class page $page. Retry $attempt of $maxRetries. Error: {$e->getMessage()}\n";
+        if ($retryDelayMs > 0) {
+          usleep($retryDelayMs * 1000);
+        }
+      }
+    }
   }
 
   /**
@@ -1470,7 +1565,7 @@ class BuildDwcHelper {
     $sensitiveOrNotPoint = (isset($source['metadata']['sensitive']) && $source['metadata']['sensitive'] === 'true') ||
       (isset($source['location']['input_sref_system']) && !preg_match('/^\d+$/', $source['location']['input_sref_system']));
     $useGridRefsIfPossible = in_array('useGridRefsIfPossible', $this->conf['options']);
-    $isDnaDerived = $source['occurrence']['dna_derived'] ?? 'false' === 'true';
+    $isDnaDerived = ($source['occurrence']['dna_derived'] ?? 'false') === 'true';
     $availableData = [
       'occurrenceID' => $this->conf['occurrenceIdPrefix'] . $source['id'],
       'id' => $this->conf['occurrenceIdPrefix'] . $source['id'],

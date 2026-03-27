@@ -52,6 +52,14 @@ script. This file contains the following options:
   id which limits the output to records which intersect the provided location ID. The location must
   be indexed by the spatial_index_builder module.
 * outputType - specify either dwca (Darwin Core Archive) or csv.
+* batchSize - optional, number of Elasticsearch documents fetched per scroll request. Defaults to
+  1000.
+* scrollKeepAlive - optional, Elasticsearch scroll context keepalive duration used between
+  requests. Defaults to `2m`. Increase if processing each batch can take longer on your
+  infrastructure.
+* scrollRetryCount - optional, number of retries for each failed Elasticsearch scroll request.
+  Defaults to 1.
+* scrollRetryDelayMs - optional, delay between scroll retries in milliseconds. Defaults to 500.
 * options - array of options to extend data with.
   * useGridRefsIfPossible - for NBN Atlas export compatibility, switch to using the gridReference
     field instead of decimalLatitude and decimalLongitude where appropriate.
