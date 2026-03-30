@@ -158,6 +158,7 @@ class BuildDwcHelper {
       'batchSize' => 1000,
       'defaultLicenceCode' => '',
       'eventIdPrefix' => '',
+      'fullPrecision' => false,
       'occurrenceIdPrefix' => '',
       'outputFile' => 'exports/' . preg_replace('/[^a-z0-9]/', '_', strtolower($baseName)) . '.zip',
       'scrollKeepAlive' => '2m',
@@ -592,6 +593,7 @@ class BuildDwcHelper {
       'id' => $this->conf['filterId'],
     ]);
     $definition = json_decode($filter[0]['definition'], TRUE);
+    $precisionForSensitiveData = $this->conf['fullPrecision'] ? 'F' : 'B';
     $bool = [
       'filter' => [
         ['term' => ['metadata.confidential' => FALSE]],
@@ -599,7 +601,7 @@ class BuildDwcHelper {
         ['term' => ['metadata.release_status' => 'R']],
         [
           'query_string' => [
-            'query' => '((metadata.sensitivity_blur:B) OR (!metadata.sensitivity_blur:*))',
+            'query' => "((metadata.sensitivity_blur:$precisionForSensitiveData) OR (!metadata.sensitivity_blur:*))",
           ],
         ],
       ],

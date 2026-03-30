@@ -21,89 +21,12 @@ This can be saved as a batch file or shell script and invoked using Windows Task
 The config file is in JSON format and the file is passed as a parameter to the dwc-generate PHP
 script. This file contains the following options:
 
-* elasticsearchHost - the web address or IP address of the server, including the port number. E.g.
-  "x.x.x.x:9200" where x.x.x.x is the server IP address.
-* index - name of the Elasticsearch alias or index to query.
-* eventIndex - if the meta.xml metafile specifies that event data should be output, then provide
-  the name of the Elasticsearch alias or index to query. This index should contain event data for
-  each document rather than occurrences and should include events that contain zero occurrences.
-* query - optional Elasticsearch query to filter the data to the dataset. Either query or filterId
-  must be specified. For example:
-  ```json
-  {
-    ...
-    "query": {
-      "bool": {
-        "filter": {
-          "term": {"metadata.website.id": 2}
-        }
-      }
-    }
-    ...
-  }
-  ```
-* eventQuery - if event data is being output, then define a query here which will be used to filter
-  the data fetched from the event index. If not specified, then the query configuration will be
-  used.
-* filterId - optional, but either query or filterId must be specified and both are applied if both
-  are present. ID of the filter record on the warehouse which will be used to dynamically generate
-  the query. The list of websites available for data flow (according to the website registration
-  configured in warehouse.json) will be automatically applied to the filter.
-* surveyId - this is a shortcut to specifying a term filter on the survey ID (`metadata.survey.id`)
-  which limits the output to a single survey dataset.
-* higherGeographyID - this is a shortcut to specifying a nested term filter on a higher geography
-  id which limits the output to records which intersect the provided location ID. The location must
-  be indexed by the spatial_index_builder module.
-* outputType - specify either dwca (Darwin Core Archive) or csv.
 * batchSize - optional, number of Elasticsearch documents fetched per scroll request. Defaults to
   1000.
-* scrollKeepAlive - optional, Elasticsearch scroll context keepalive duration used between
-  requests. Defaults to `2m`. Increase if processing each batch can take longer on your
-  infrastructure.
-* scrollRetryCount - optional, number of retries for each failed Elasticsearch scroll request.
-  Defaults to 1.
-* scrollRetryDelayMs - optional, delay between scroll retries in milliseconds. Defaults to 500.
-* options - array of options to extend data with.
-  * useGridRefsIfPossible - for NBN Atlas export compatibility, switch to using the gridReference
-    field instead of decimalLatitude and decimalLongitude where appropriate.
-  * ipt - set this flag to true to enable IPT compatibility, which means that new lines inside
-    comment fields will be replaced by <br>.
-* outputFile - optional output file name, relative or absolute file path. Use when the output type
-  is dwca (Darwin Core Archive), or when the output type is csv and only a single output file is
-  specified in the meta.xml file. Existing CSV files will be overwritten and existing Darwin Core
-  Archive zip files will have the occurrences contents updated. If not specified then uses the
-  config file name to default to `exports/<config file name>.<ext>`.
-
-  Note that when 2 or more output files are specified in meta.xml for a CSV export, then the
-  outputFile setting is ignored and the filenames of the individual CSV files must be specified in
-  the `<files><location>` element within the `<core>` or `<extension>` element that describes the
-  file.
-* xmlFilesInDir - if creating a Darwin Core Archive file, then the eml.xml and meta.xml files need
-  to be in a sub-directory specified by this setting and they will be added to the DwC-A Zip
-  archive file. If not specified but a folder exists with the same filename as the json config file
-  in a metadata subfolder, then this will be used. E.g. if the config file is called
-  `aculeates.json` then the expected location would be `exports/aculeates`. If outputting a CSV
-  file the eml.xml file is not required, but you should still provide meta.xml in order to dictate
-  whether you are exporting Event or Occurrence data and which columns to include.
-* occurrenceIdPrefix - optional, prefix to use when constructing the occurrenceID, e.g. "brc1|".
-* eventIdPrefix - optional, prefix to use when constructing the occurrenceID, e.g. "brcevt1|".
-* defaultLicenceCode - optional, default licence to apply if not specified at the record level.
-  e.g. "CC-BY".
-* rightsHolder - Darwin Core rightsHolder to specify if there is a rightsHolder column in the
-  meta.xml file.
-* datasetName - Darwin Core datasetName to specify if there is a datasetName column in the
-  meta.xml file.
-* datasetIdSampleAttrId - ID of the sample attribute which holds the datasetID value.
-* basisOfRecord - optional, defaults to "HumanObservation".
-* basisOfRecordDna - optional, defaults to "MaterialSample".
-* repeatExport - optional. Allows a single configuration file to define a set of several similar
-  exports, for example you might want to create a series of exports which are identical but divide
-  the data by country. Provide an array, containing an object per export file with properties that
-  will be merged with the top-level configuration provided in the configuration. E.g. you can
-  specify `datasetName` in the `repeatExport` property's objects to define a different dataset name
-  per file. You can also use the `surveyId` and `higherGeographyId` filter shortcut options to
-  easily divide the files on either survey or location. An example of the `repeatExport`
-  configuration is provided in the file `config/export-example-occurrence-bulk.json`.
+* basisOfRecord - optional, defaults to "HumanObservation". Default basisOfRecord exported for
+  occurrence data other than DNA-derived.
+* basisOfRecordDna - optional, defaults to "MaterialSample". Default basisOfRecord exported for
+  DNA-derived occurrence data.
 * customFields - an optional configuration object where the top-level property names are either
   "occurrence" or "event" allowing custom fields to be attached to either event or occurrenc data.
   Each of these properties contains an array of DwC term names with configuration for a function
@@ -125,6 +48,87 @@ script. This file contains the following options:
       }
     }
   ```
+* datasetIdSampleAttrId - ID of the sample attribute which holds the datasetID value.
+* datasetName - Darwin Core datasetName to specify if there is a datasetName column in the
+  meta.xml file.
+* defaultLicenceCode - optional, default licence to apply if not specified at the record level.
+  e.g. "CC-BY".
+* elasticsearchHost - the web address or IP address of the server, including the port number. E.g.
+  "x.x.x.x:9200" where x.x.x.x is the server IP address.
+* eventIdPrefix - optional, prefix to use when constructing the occurrenceID, e.g. "brcevt1|".
+* eventIndex - if the meta.xml metafile specifies that event data should be output, then provide
+  the name of the Elasticsearch alias or index to query. This index should contain event data for
+  each document rather than occurrences and should include events that contain zero occurrences.
+* eventQuery - if event data is being output, then define a query here which will be used to filter
+  the data fetched from the event index. If not specified, then the query configuration will be
+  used.
+* filterId - optional, but either query or filterId must be specified and both are applied if both
+  are present. ID of the filter record on the warehouse which will be used to dynamically generate
+  the query. The list of websites available for data flow (according to the website registration
+  configured in warehouse.json) will be automatically applied to the filter.
+* fullPrecision - defaults to false. Set to true to export full precision data rather than blurred
+  for any sensitive or private data.
+* higherGeographyID - this is a shortcut to specifying a nested term filter on a higher geography
+  id which limits the output to records which intersect the provided location ID. The location must
+  be indexed by the spatial_index_builder module.
+* index - name of the Elasticsearch alias or index to query.
+* occurrenceIdPrefix - optional, prefix to use when constructing the occurrenceID, e.g. "brc1|".
+* options - array of options to extend data with.
+  * useGridRefsIfPossible - for NBN Atlas export compatibility, switch to using the gridReference
+    field instead of decimalLatitude and decimalLongitude where appropriate.
+  * ipt - set this flag to true to enable IPT compatibility, which means that new lines inside
+    comment fields will be replaced by <br>.
+* outputFile - optional output file name, relative or absolute file path. Use when the output type
+  is dwca (Darwin Core Archive), or when the output type is csv and only a single output file is
+  specified in the meta.xml file. Existing CSV files will be overwritten and existing Darwin Core
+  Archive zip files will have the occurrences contents updated. If not specified then uses the
+  config file name to default to `exports/<config file name>.<ext>`.
+
+  Note that when 2 or more output files are specified in meta.xml for a CSV export, then the
+  outputFile setting is ignored and the filenames of the individual CSV files must be specified in
+  the `<files><location>` element within the `<core>` or `<extension>` element that describes the
+  file.
+* outputType - specify either dwca (Darwin Core Archive) or csv.
+* query - optional Elasticsearch query to filter the data to the dataset. Either query or filterId
+  must be specified. For example:
+  ```json
+  {
+    ...
+    "query": {
+      "bool": {
+        "filter": {
+          "term": {"metadata.website.id": 2}
+        }
+      }
+    }
+    ...
+  }
+  ```
+* repeatExport - optional. Allows a single configuration file to define a set of several similar
+  exports, for example you might want to create a series of exports which are identical but divide
+  the data by country. Provide an array, containing an object per export file with properties that
+  will be merged with the top-level configuration provided in the configuration. E.g. you can
+  specify `datasetName` in the `repeatExport` property's objects to define a different dataset name
+  per file. You can also use the `surveyId` and `higherGeographyId` filter shortcut options to
+  easily divide the files on either survey or location. An example of the `repeatExport`
+  configuration is provided in the file `config/export-example-occurrence-bulk.json`.
+* rightsHolder - Darwin Core rightsHolder to specify if there is a rightsHolder column in the
+  meta.xml file.
+* scrollKeepAlive - optional, Elasticsearch scroll context keepalive duration used between
+  requests. Defaults to `2m`. Increase if processing each batch can take longer on your
+  infrastructure.
+* scrollRetryCount - optional, number of retries for each failed Elasticsearch scroll request.
+  Defaults to 1.
+* scrollRetryDelayMs - optional, delay between scroll retries in milliseconds. Defaults to 500.
+* surveyId - this is a shortcut to specifying a term filter on the survey ID (`metadata.survey.id`)
+  which limits the output to a single survey dataset.
+* xmlFilesInDir - if creating a Darwin Core Archive file, then the eml.xml and meta.xml files need
+  to be in a sub-directory specified by this setting and they will be added to the DwC-A Zip
+  archive file. If not specified but a folder exists with the same filename as the json config file
+  in a metadata subfolder, then this will be used. E.g. if the config file is called
+  `aculeates.json` then the expected location would be `exports/aculeates`. If outputting a CSV
+  file the eml.xml file is not required, but you should still provide meta.xml in order to dictate
+  whether you are exporting Event or Occurrence data and which columns to include.
 
 # Metafile
 
