@@ -74,13 +74,13 @@ class BuildDwcHelper {
   public function __construct($configFileName) {
     echo "\n-Starting extraction\n";
     $this->loadServerConfig();
-    $this->readAuth = $this->getReadAuth();
     try {
       $this->loadConfig($configFileName);
     }
     catch (Exception $e) {
       die("Error loading \"$configFileName\"\n" . $e->getMessage());
     }
+    $this->readAuth = $this->getReadAuth();
   }
 
   /**
@@ -130,6 +130,20 @@ class BuildDwcHelper {
       ];
     }
     echo "Config file \"$configFileName\" loaded\n";
+    // If the config file has overrides for warehouse connection details, apply
+    // them.
+    if (!empty($this->confAsLoaded['website_id'])) {
+      $this->websiteID = $this->confAsLoaded['website_id'];
+    }
+    if (!empty($this->confAsLoaded['website_password'])) {
+      $this->websitePassword = $this->confAsLoaded['website_password'];
+    }
+    if (!empty($this->confAsLoaded['warehouse_url'])) {
+      $this->warehouseUrl = $this->confAsLoaded['warehouse_url'];
+    }
+    if (!empty($this->confAsLoaded['master_checklist_id'])) {
+      $this->masterChecklistId = $this->confAsLoaded['master_checklist_id'];
+    }
   }
 
   private function initConfig($configFileName) {
