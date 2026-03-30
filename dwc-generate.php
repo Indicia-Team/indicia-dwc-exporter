@@ -95,10 +95,10 @@ class BuildDwcHelper {
       throw new Exception('Empty configuration file');
     }
     $warehouseConf = json_decode($configFileContents);
-    $this->websiteID = $warehouseConf->website_id;
+    $this->websiteID = (int) $warehouseConf->website_id;
     $this->websitePassword = $warehouseConf->website_password;
     $this->warehouseUrl = $warehouseConf->warehouse_url;
-    $this->masterChecklistId = $warehouseConf->master_checklist_id;
+    $this->masterChecklistId = (int) $warehouseConf->master_checklist_id;
   }
 
   /**
@@ -133,7 +133,7 @@ class BuildDwcHelper {
     // If the config file has overrides for warehouse connection details, apply
     // them.
     if (!empty($this->confAsLoaded['website_id'])) {
-      $this->websiteID = $this->confAsLoaded['website_id'];
+      $this->websiteID = (int) $this->confAsLoaded['website_id'];
     }
     if (!empty($this->confAsLoaded['website_password'])) {
       $this->websitePassword = $this->confAsLoaded['website_password'];
@@ -142,7 +142,7 @@ class BuildDwcHelper {
       $this->warehouseUrl = $this->confAsLoaded['warehouse_url'];
     }
     if (!empty($this->confAsLoaded['master_checklist_id'])) {
-      $this->masterChecklistId = $this->confAsLoaded['master_checklist_id'];
+      $this->masterChecklistId = (int) $this->confAsLoaded['master_checklist_id'];
     }
   }
 
@@ -1416,13 +1416,13 @@ class BuildDwcHelper {
       'reportSource' => 'local',
       'sharing' => 'data_flow',
     ]);
-    $websiteIds = [];
+    $websiteIds = [$this->websiteID];
     foreach ($websites as $website) {
-      $websiteIds[] = (integer) $website['id'];
+      $websiteIds[] = (int) $website['id'];
     }
     sort($websiteIds);
     $bool['filter'][] = [
-      'terms' => ['metadata.website.id' => $websiteIds],
+      'terms' => ['metadata.website.id' => array_unique($websiteIds)],
     ];
   }
 
