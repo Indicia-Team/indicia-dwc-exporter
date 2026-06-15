@@ -720,7 +720,7 @@ class BuildDwcHelper {
       $keys[] = $taxon['external_key'];
     }
     $keys = array_unique($keys);
-    $bool['filter'][] = ['terms' => ['taxon.higher_taxon_ids' => $keys]];
+    $bool['filter'][] = ['terms' => ['taxon.higher_taxon_ids' => array_values($keys)]];
   }
 
   /**
@@ -1424,7 +1424,7 @@ class BuildDwcHelper {
     }
     sort($websiteIds);
     $bool['filter'][] = [
-      'terms' => ['metadata.website.id' => array_unique($websiteIds)],
+      'terms' => ['metadata.website.id' => array_values(array_unique($websiteIds))],
     ];
   }
 
